@@ -15,13 +15,21 @@
   - 唯一：lower(btrim(email)) 僅在 pending
 
 ## 訂單
-- orders
-  - id text PK（O01958 起遞增；本機鎖）
-  - data jsonb（含明細、時間區間、折扣、簽名、照片等）
+- orders（接雲版以欄位化儲存，不再用單一 data 欄）
+  - id uuid/text PK
+  - customer_name, customer_phone, customer_address
+  - preferred_date, preferred_time_start, preferred_time_end
+  - platform, referrer_code, member_id
+  - service_items jsonb, assigned_technicians jsonb
+  - signatures jsonb, photos jsonb, photos_before jsonb, photos_after jsonb
+  - payment_method, payment_status
+  - points_used int, points_deduct_amount numeric
+  - work_started_at, work_completed_at, service_finished_at
+  - canceled_reason, closed_at
   - status, created_at, updated_at
 
 ## 其他
-- products：id, name, unit_price, group_price, group_min_qty, description, image_urls
+- products：id, name, unit_price, group_price, group_min_qty, description, image_urls, safe_stock, updated_at
 - inventory：id, name, product_id, quantity, description, image_urls
 - promotions：id, title, description, active, start_at, end_at, rules
 - documents：id, title, url, tags

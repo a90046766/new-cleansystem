@@ -80,6 +80,8 @@ export interface Order {
   referrerCode?: string
   paymentMethod?: 'cash' | 'transfer' | 'card' | 'other'
   paymentStatus?: 'unpaid' | 'paid' | 'partial'
+  pointsUsed?: number
+  pointsDeductAmount?: number
   serviceItems: Array<{
     productId?: string
     name: string

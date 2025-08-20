@@ -23,10 +23,10 @@ export default function OrderManagementPage() {
         load(); }, [repos]);
     useEffect(() => { getActivePercent().then(setActivePercent); }, [creating]);
     useEffect(() => { (async () => { try {
-        const { productRepo } = await import('../../adapters/local/products');
-        setProducts(await productRepo.list());
+        const a = repos || (await loadAdapters());
+        setProducts(await a.productRepo.list());
     }
-    catch { } })(); }, [creating]);
+    catch { } })(); }, [creating, repos]);
     const filtered = rows.filter(o => {
         const hit = !q || o.id.includes(q) || (o.customerName || '').includes(q);
         const pfKeys = Object.keys(pf).filter(k => pf[k]);

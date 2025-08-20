@@ -144,25 +144,26 @@ class LocalOrderRepo {
             if (!order)
                 return;
             const amount = order.serviceItems.reduce((sum, it) => sum + it.unitPrice * it.quantity, 0);
+            const netAmount = Math.max(0, amount - (order.pointsDeductAmount || 0));
             const ref = (order.referrerCode || '').toUpperCase();
             // 會員：100 元 = 1 點
             if (order.memberId) {
                 const m = await memberRepo.get(order.memberId);
                 if (m)
-                    await memberRepo.upsert({ ...m, points: (m.points || 0) + Math.floor(amount / 100) });
+                    await memberRepo.upsert({ ...m, points: (m.points || 0) + Math.floor(netAmount / 100) });
             }
             // 技師/業務介紹（每滿 300 元 +1）
             if (ref.startsWith('SR')) {
                 const techs = await technicianRepo.list();
                 const t = techs.find(x => x.code.toUpperCase() === ref);
                 if (t)
-                    await technicianRepo.upsert({ id: t.id, name: t.name, shortName: t.shortName, email: t.email, phone: t.phone, region: t.region, status: t.status, points: (t.points || 0) + Math.floor(amount / 300) });
+                    await technicianRepo.upsert({ id: t.id, name: t.name, shortName: t.shortName, email: t.email, phone: t.phone, region: t.region, status: t.status, points: (t.points || 0) + Math.floor(netAmount / 300) });
             }
             else if (ref.startsWith('SE')) {
                 const staffs = await staffRepo.list();
                 const s = staffs.find(x => (x.refCode || '').toUpperCase() === ref);
                 if (s)
-                    await staffRepo.upsert({ name: s.name, shortName: s.shortName, email: s.email, phone: s.phone, role: s.role, status: s.status, points: (s.points || 0) + Math.floor(amount / 300) });
+                    await staffRepo.upsert({ name: s.name, shortName: s.shortName, email: s.email, phone: s.phone, role: s.role, status: s.status, points: (s.points || 0) + Math.floor(netAmount / 300) });
             }
         }
         catch { }

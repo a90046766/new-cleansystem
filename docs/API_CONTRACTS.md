@@ -18,15 +18,18 @@
 - approve(id: string): Promise<void>               // 交易化處理
 - reject(id: string): Promise<void>
 
-## OrdersRepo
+## OrderRepo
 - list(filter?): Promise<OrderSummary[]>
-- get(id): Promise<Order>
+- get(id): Promise<Order | null>
 - create(draft: OrderDraft): Promise<Order>
 - update(id, patch): Promise<void>
 - delete(id, reason): Promise<void>   // confirmed 禁止
 - cancel(id, reason): Promise<void>
+- confirm(id): Promise<void>
 - startWork(id, at): Promise<void>
 - finishWork(id, at): Promise<void>
+
+備註：在 Supabase adapter 中對應欄位 `created_at` / `updated_at`，其餘欄位名稱保持一致（如 `work_started_at`, `work_completed_at`）。
 
 ## ScheduleRepo
 - listTechnician(dateRange): Promise<Slot[]>

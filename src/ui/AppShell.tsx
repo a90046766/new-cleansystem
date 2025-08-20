@@ -151,8 +151,9 @@ export default function AppShell() {
     <div className="flex min-h-screen bg-[#F5F7FB]">
       <DesktopNav />
       <main className="flex-1">
-        <div className="sticky top-0 z-10 border-b bg-white/80 px-4 py-3 backdrop-blur">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-white/80 px-4 py-3 backdrop-blur">
           <div className="text-base font-semibold text-gray-800">洗濯派工系統</div>
+          <button onClick={()=>{ authRepo.logout().then(()=>{ window.location.href='/login' }) }} className="rounded bg-gray-100 px-3 py-1 text-sm text-gray-700">登出</button>
         </div>
         <div className="px-4 py-4">
           <Outlet />

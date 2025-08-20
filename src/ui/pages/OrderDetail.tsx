@@ -15,12 +15,55 @@ export default function PageOrderDetail() {
   const [itemsDraft, setItemsDraft] = useState<any[]>([])
   const [memberCode, setMemberCode] = useState<string>('')
   const [memberName, setMemberName] = useState<string>('')
+  const [timeLeftSec, setTimeLeftSec] = useState<number>(0)
+  const [createdAtEdit, setCreatedAtEdit] = useState<string>('')
+  const [dateEdit, setDateEdit] = useState<string>('')
+  const [startEdit, setStartEdit] = useState<string>('')
+  const [endEdit, setEndEdit] = useState<string>('')
+  const [payMethod, setPayMethod] = useState<'cash'|'transfer'|'card'|'other'|''>('')
+  const [payStatus, setPayStatus] = useState<'unpaid'|'paid'|'partial'|''>('')
+  const [signAs, setSignAs] = useState<'customer'|'technician'>('technician')
   const user = authRepo.getCurrentUser()
   useEffect(() => { if (id) orderRepo.get(id).then(setOrder) }, [id])
   useEffect(() => { if (order) setItemsDraft(order.serviceItems || []) }, [order])
   useEffect(()=>{ (async()=>{ try { if (order?.memberId) { const { memberRepo } = await import('../../adapters/local/members'); const m = await memberRepo.get(order.memberId); setMemberCode(m?.code||''); setMemberName(m?.name||'') } else { setMemberCode(''); setMemberName('') } } catch {} })() },[order?.memberId])
+  useEffect(()=>{
+    if (!order) return
+    const toLocal = (iso:string) => {
+      try { return iso.slice(0,19) + (iso.includes('Z')?'':'') } catch { return '' }
+    }
+    setCreatedAtEdit(order.createdAt?.slice(0,16).replace('T','T') || new Date().toISOString().slice(0,16))
+    setDateEdit(order.preferredDate||'')
+    setStartEdit(order.preferredTimeStart||'09:00')
+    setEndEdit(order.preferredTimeEnd||'12:00')
+    setPayMethod((order.paymentMethod as any) || '')
+    setPayStatus((order.paymentStatus as any) || '')
+  },[order])
   const [products, setProducts] = useState<any[]>([])
   useEffect(()=>{ (async()=>{ const { productRepo } = await import('../../adapters/local/products'); setProducts(await productRepo.list()) })() },[])
+  // 倒數計時（開始服務後 N 分鐘內不可按「服務完成」；由設定決定）
+  useEffect(()=>{
+    if (!order?.workStartedAt || order.status==='completed' || order.status==='canceled') { setTimeLeftSec(0); return }
+    const parseTs = (s:string) => {
+      if (!s) return 0
+      if (s.includes('T')) return Date.parse(s)
+      const d = new Date(s); return isNaN(d.getTime()) ? 0 : d.getTime()
+    }
+    let h: any
+    ;(async()=>{
+      try {
+        const { settingsRepo } = await import('../../adapters/local/settings')
+        const s = await settingsRepo.get()
+        const COOLDOWN_MS = (s.countdownEnabled ? s.countdownMinutes : 0) * 60 * 1000
+        if (!COOLDOWN_MS) { setTimeLeftSec(0); return }
+        const started = parseTs(order.workStartedAt)
+        const endAt = started + COOLDOWN_MS
+        const tick = () => { const now = Date.now(); const left = Math.max(0, Math.floor((endAt - now)/1000)); setTimeLeftSec(left) }
+        tick(); h = setInterval(tick, 1000)
+      } catch { setTimeLeftSec(0) }
+    })()
+    return () => { if (h) clearInterval(h) }
+  }, [order?.workStartedAt, order?.status])
   if (!order) return <div>載入中...</div>
   const isAdminOrSupport = user?.role==='admin' || user?.role==='support'
   const isAssignedTech = user?.role==='technician' && Array.isArray(order.assignedTechnicians) && order.assignedTechnicians.includes(user?.name || '')
@@ -70,21 +113,78 @@ export default function PageOrderDetail() {
       </div>
 
       <div className="rounded-2xl bg-white p-4 shadow-card">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-base font-semibold">{order.customerName}</div>
-            <div className="text-brand-600 underline">{order.customerAddress}</div>
-          </div>
-          <a href={`tel:${order.customerPhone}`} className="rounded-full bg-brand-500 px-3 py-2 text-white">撥打</a>
+        <SectionTitle>客戶資料</SectionTitle>
+        <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+          <div>姓名：<input className="w-full rounded border px-2 py-1" value={order.customerName||''} onChange={async e=>{ await orderRepo.update(order.id, { customerName:e.target.value }); const o=await orderRepo.get(order.id); setOrder(o) }} /></div>
+          <div>手機：<div className="flex gap-2"><input className="w-full rounded border px-2 py-1" value={order.customerPhone||''} onChange={async e=>{ await orderRepo.update(order.id, { customerPhone:e.target.value }); const o=await orderRepo.get(order.id); setOrder(o) }} /><a href={`tel:${order.customerPhone}`} className="rounded bg-brand-500 px-3 py-1 text-white">撥打</a></div></div>
+          <div className="col-span-2">地址：<input className="w-full rounded border px-2 py-1" value={order.customerAddress||''} onChange={async e=>{ await orderRepo.update(order.id, { customerAddress:e.target.value }); const o=await orderRepo.get(order.id); setOrder(o) }} /></div>
+          <div>會員編號：<span className="text-gray-700">{memberCode||'—'}</span></div>
+        </div>
+      </div>
+
+      <div className="rounded-2xl bg-white p-4 shadow-card">
+        <SectionTitle>服務內容</SectionTitle>
+        <div className="mt-3 text-sm">
+          {!editItems ? (
+            <div className="rounded border">
+              <div className="grid grid-cols-4 bg-gray-50 px-2 py-1 text-xs text-gray-600"><div>項目</div><div>數量</div><div>單價</div><div className="text-right">小計</div></div>
+              {(order.serviceItems||[]).map((it:any,i:number)=>{
+                const sub = it.quantity*it.unitPrice
+                return <div key={i} className="grid grid-cols-4 items-center px-2 py-1 text-sm"><div>{it.name}</div><div>{it.quantity}</div><div>{it.unitPrice}</div><div className="text-right">{sub}</div></div>
+              })}
+              <div className="border-t px-2 py-1 text-right text-rose-600">總計：<span className="text-base font-semibold">{(order.serviceItems||[]).reduce((s:number,it:any)=>s+it.unitPrice*it.quantity,0)}</span></div>
+            </div>
+          ) : (
+            <div className="mt-2 space-y-2 text-sm">
+              {itemsDraft.map((it:any, i:number)=>(
+                <div key={i} className="grid grid-cols-6 items-center gap-2">
+                  <select className="col-span-2 rounded border px-2 py-1" value={it.productId||''} onChange={async (e)=>{ const val=e.target.value; const arr=[...itemsDraft]; if(val){ const p = products.find((x:any)=>x.id===val); arr[i]={...arr[i], productId:val, name:p?.name||it.name, unitPrice:p?.unitPrice||it.unitPrice}; } else { arr[i]={...arr[i], productId:undefined}; } setItemsDraft(arr) }}>
+                    <option value="">自訂</option>
+                    {products.map((p:any)=>(<option key={p.id} value={p.id}>{p.name}（{p.unitPrice}）</option>))}
+                  </select>
+                  <input className="col-span-2 rounded border px-2 py-1" value={it.name} onChange={e=>{ const arr=[...itemsDraft]; arr[i]={...arr[i], name:e.target.value}; setItemsDraft(arr) }} />
+                  <input type="number" className="rounded border px-2 py-1" value={it.quantity} onChange={e=>{ const arr=[...itemsDraft]; arr[i]={...arr[i], quantity:Number(e.target.value)}; setItemsDraft(arr) }} />
+                  <input type="number" className="rounded border px-2 py-1" value={it.unitPrice} onChange={e=>{ const arr=[...itemsDraft]; arr[i]={...arr[i], unitPrice:Number(e.target.value)}; setItemsDraft(arr) }} />
+                  <button onClick={()=>{ const arr=[...itemsDraft]; arr.splice(i,1); setItemsDraft(arr) }} className="rounded bg-gray-100 px-2 py-1">刪</button>
+                </div>
+              ))}
+              <div><button onClick={()=>setItemsDraft([...itemsDraft, { name:'', quantity:1, unitPrice:0 }])} className="rounded bg-gray-100 px-2 py-1">新增項目</button></div>
+              <div className="text-right">
+                <button onClick={async()=>{ await orderRepo.update(order.id, { serviceItems: itemsDraft }); const o=await orderRepo.get(order.id); setOrder(o); setEditItems(false) }} className="rounded bg-brand-500 px-3 py-1 text-white">儲存</button>
+              </div>
+            </div>
+          )}
+          {user?.role!=='technician' && <div className="mt-2 text-right"><button onClick={()=>setEditItems(e=>!e)} className="rounded bg-gray-100 px-2 py-1 text-xs">{editItems?'取消':'編輯項目'}</button></div>}
         </div>
       </div>
 
       <div className="rounded-2xl bg-white p-4 shadow-card">
         <SectionTitle>預約資訊</SectionTitle>
         <div className="mt-3 space-y-2 text-sm">
-          <div>下單時間：{new Date(order.createdAt).toLocaleString('zh-TW')}</div>
-          <div>服務時間：{order.preferredDate || ''} {order.preferredTimeStart}~{order.preferredTimeEnd}</div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>下單時間：<input type="datetime-local" className="w-full rounded border px-2 py-1" value={createdAtEdit} onChange={e=>setCreatedAtEdit(e.target.value)} onBlur={async()=>{ await orderRepo.update(order.id, { createdAt: new Date(createdAtEdit).toISOString() }); const o=await orderRepo.get(order.id); setOrder(o) }} /></div>
+            <div className="grid grid-cols-3 gap-2"><input type="date" className="rounded border px-2 py-1" value={dateEdit} onChange={e=>setDateEdit(e.target.value)} onBlur={async()=>{ await orderRepo.update(order.id, { preferredDate: dateEdit }); const o=await orderRepo.get(order.id); setOrder(o) }} /><input type="time" className="rounded border px-2 py-1" value={startEdit} onChange={e=>setStartEdit(e.target.value)} onBlur={async()=>{ await orderRepo.update(order.id, { preferredTimeStart: startEdit }); const o=await orderRepo.get(order.id); setOrder(o) }} /><input type="time" className="rounded border px-2 py-1" value={endEdit} onChange={e=>setEndEdit(e.target.value)} onBlur={async()=>{ await orderRepo.update(order.id, { preferredTimeEnd: endEdit }); const o=await orderRepo.get(order.id); setOrder(o) }} /></div>
+          </div>
           <div className="text-xs text-gray-500">推薦碼：{order.referrerCode || '-'} {order.referrerCode && (<button className="ml-2 underline" onClick={()=>navigator.clipboard.writeText(order.referrerCode)}>複製</button>)}</div>
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <div>付款方式：
+              <select className="rounded border px-2 py-1" value={payMethod} onChange={async e=>{ setPayMethod(e.target.value as any); await orderRepo.update(order.id, { paymentMethod: e.target.value as any }); const o=await orderRepo.get(order.id); setOrder(o) }}>
+                <option value="">—</option>
+                <option value="cash">現金</option>
+                <option value="transfer">轉帳</option>
+                <option value="card">刷卡</option>
+                <option value="other">其他</option>
+              </select>
+            </div>
+            <div>付款狀態：
+              <select className="rounded border px-2 py-1" value={payStatus} onChange={async e=>{ setPayStatus(e.target.value as any); await orderRepo.update(order.id, { paymentStatus: e.target.value as any }); const o=await orderRepo.get(order.id); setOrder(o) }}>
+                <option value="">—</option>
+                <option value="unpaid">未付款</option>
+                <option value="partial">部分付款</option>
+                <option value="paid">已付款</option>
+              </select>
+            </div>
+          </div>
           <div className="text-xs text-gray-700">
             會員：
             {can(user,'orders.update') ? (
@@ -138,64 +238,45 @@ export default function PageOrderDetail() {
               </div>
             </div>
           )}
-          <div className="mt-2">
-            <div className="flex items-center justify-between">
-              <div className="font-semibold">項目明細：</div>
-              {user?.role!=='technician' && <button onClick={()=>setEditItems(e=>!e)} className="rounded bg-gray-100 px-2 py-1 text-xs">{editItems?'取消':'編輯項目'}</button>}
-            </div>
-            {!editItems ? (
-              <>
-                {order.serviceItems?.map((it:any, i:number) => (
-                  <div key={i}>{it.name} × {it.quantity} <span className="float-right font-bold text-rose-500">${it.unitPrice}</span></div>
-                ))}
-                <div className="mt-1 text-xs text-gray-500">合計：{(order.serviceItems||[]).reduce((s:number,it:any)=>s+it.unitPrice*it.quantity,0)}</div>
-              </>
-            ) : (
-              <div className="mt-2 space-y-2 text-sm">
-                {itemsDraft.map((it:any, i:number)=>(
-                  <div key={i} className="grid grid-cols-6 items-center gap-2">
-                    <select className="col-span-2 rounded border px-2 py-1" value={it.productId||''} onChange={async (e)=>{ const val=e.target.value; const arr=[...itemsDraft]; if(val){ const p = products.find((x:any)=>x.id===val); arr[i]={...arr[i], productId:val, name:p?.name||it.name, unitPrice:p?.unitPrice||it.unitPrice}; } else { arr[i]={...arr[i], productId:undefined}; } setItemsDraft(arr) }}>
-                      <option value="">自訂</option>
-                      {products.map((p:any)=>(<option key={p.id} value={p.id}>{p.name}（{p.unitPrice}）</option>))}
-                    </select>
-                    <input className="col-span-2 rounded border px-2 py-1" value={it.name} onChange={e=>{ const arr=[...itemsDraft]; arr[i]={...arr[i], name:e.target.value}; setItemsDraft(arr) }} />
-                    <input type="number" className="rounded border px-2 py-1" value={it.quantity} onChange={e=>{ const arr=[...itemsDraft]; arr[i]={...arr[i], quantity:Number(e.target.value)}; setItemsDraft(arr) }} />
-                    <input type="number" className="rounded border px-2 py-1" value={it.unitPrice} onChange={e=>{ const arr=[...itemsDraft]; arr[i]={...arr[i], unitPrice:Number(e.target.value)}; setItemsDraft(arr) }} />
-                    <button onClick={()=>{ const arr=[...itemsDraft]; arr.splice(i,1); setItemsDraft(arr) }} className="rounded bg-gray-100 px-2 py-1">刪</button>
-                  </div>
-                ))}
-                <div><button onClick={()=>setItemsDraft([...itemsDraft, { name:'', quantity:1, unitPrice:0 }])} className="rounded bg-gray-100 px-2 py-1">新增項目</button></div>
-                <div className="text-right">
-                  <button onClick={async()=>{ await orderRepo.update(order.id, { serviceItems: itemsDraft }); const o=await orderRepo.get(order.id); setOrder(o); setEditItems(false) }} className="rounded bg-brand-500 px-3 py-1 text-white">儲存</button>
-                </div>
-              </div>
-            )}
-          </div>
+          
         </div>
       </div>
       <SignatureModal open={signOpen} onClose={()=>setSignOpen(false)} onSave={async (dataUrl)=>{ await orderRepo.update(order.id, { signatures: { ...(order.signatures||{}), [order.signatureTechnician||'technician']: dataUrl } }); const o = await orderRepo.get(order.id); setOrder(o); setSignOpen(false) }} />
 
       <div className="rounded-2xl bg-white p-4 shadow-card">
-        <SectionTitle>照片</SectionTitle>
-        <div className="mt-3">
-          <PhotoGrid urls={order.photos || []} />
-          <div className="mt-3 text-sm">
-            <label className="mb-1 block">上傳照片（最多 20 張，≤200KB）</label>
-            <input type="file" accept="image/*" multiple onChange={async (e)=>{
-              const files = Array.from(e.target.files || [])
-              const remain = Math.max(0, 20 - (order.photos?.length || 0))
-              const take = files.slice(0, remain)
-              const imgs: string[] = []
-              for (const f of take) imgs.push(await compressImageToDataUrl(f, 200))
-              await orderRepo.update(order.id, { photos: [ ...(order.photos||[]), ...imgs ] })
-              const o = await orderRepo.get(order.id); setOrder(o)
-            }} />
+        <SectionTitle>服務照片</SectionTitle>
+        <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div>
+            <div className="mb-1 font-semibold">清洗前</div>
+            <PhotoGrid urls={order.photosBefore || []} />
+            <div className="mt-2 text-sm">
+              <input type="file" accept="image/*" multiple onChange={async (e)=>{
+                const files = Array.from(e.target.files || [])
+                const imgs: string[] = []
+                for (const f of files) imgs.push(await compressImageToDataUrl(f, 200))
+                await orderRepo.update(order.id, { photosBefore: [ ...(order.photosBefore||[]), ...imgs ] })
+                const o = await orderRepo.get(order.id); setOrder(o)
+              }} />
+            </div>
+          </div>
+          <div>
+            <div className="mb-1 font-semibold">清洗後</div>
+            <PhotoGrid urls={order.photosAfter || []} />
+            <div className="mt-2 text-sm">
+              <input type="file" accept="image/*" multiple onChange={async (e)=>{
+                const files = Array.from(e.target.files || [])
+                const imgs: string[] = []
+                for (const f of files) imgs.push(await compressImageToDataUrl(f, 200))
+                await orderRepo.update(order.id, { photosAfter: [ ...(order.photosAfter||[]), ...imgs ] })
+                const o = await orderRepo.get(order.id); setOrder(o)
+              }} />
+            </div>
           </div>
         </div>
       </div>
 
       <div className="rounded-2xl bg-white p-4 shadow-card">
-        <SectionTitle>訂單已完成</SectionTitle>
+        <SectionTitle>訂單進度</SectionTitle>
         <div className="mt-2">
           <TimelineStep index={1} title="聯絡客戶" time="2025/07/14 13:57:50" />
           <TimelineStep index={2} title="確認報價" time="2025/07/14 13:57:51" />
@@ -203,8 +284,10 @@ export default function PageOrderDetail() {
           <TimelineStep index={4} title="服務完成" time="2025/08/17 20:25:29" />
         </div>
         <div className="mt-3 flex gap-2">
-          <button onClick={async()=>{ if(!confirm('開工前請再次告知公司承諾並取得同意。是否開始？')) return; await orderRepo.startWork(order.id, new Date().toISOString()); const o=await orderRepo.get(order.id); setOrder(o) }} className="rounded bg-brand-500 px-3 py-1 text-white">開始工作</button>
-          <button onClick={async()=>{ if(!confirm('是否確認服務完成？')) return; await orderRepo.finishWork(order.id, new Date().toISOString()); const o=await orderRepo.get(order.id); setOrder(o) }} className="rounded bg-gray-900 px-3 py-1 text-white">完成工作</button>
+          <button onClick={async()=>{ if(!confirm('開始服務前請再次告知公司承諾並取得同意。是否開始？')) return; await orderRepo.startWork(order.id, new Date().toISOString()); const o=await orderRepo.get(order.id); setOrder(o) }} className="rounded bg-brand-500 px-3 py-1 text-white">開始服務</button>
+          <button disabled={timeLeftSec>0} onClick={async()=>{ if(!confirm('是否確認服務完成？')) return; await orderRepo.finishWork(order.id, new Date().toISOString()); const o=await orderRepo.get(order.id); setOrder(o) }} className={`rounded px-3 py-1 text-white ${timeLeftSec>0? 'bg-gray-400' : 'bg-gray-900'}`}>
+            {timeLeftSec>0 ? `服務完成（剩餘 ${String(Math.floor(timeLeftSec/60)).padStart(2,'0')}:${String(timeLeftSec%60).padStart(2,'0')}）` : '服務完成'}
+          </button>
         </div>
       </div>
     </div>

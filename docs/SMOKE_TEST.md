@@ -12,3 +12,9 @@
 - 薪資：區域→技師篩選；客服只看自己
 - 通知：發送與未讀徽章
 - 手機技師：全功能可用；漢堡不覆蓋內容
+
+## Supabase 模式快測（VITE_USE_SUPABASE=1）
+
+- 訂單列表可正常載入（`orders` 表已有資料時）
+- 新增訂單成功寫入 Supabase（回到列表可見）
+- 切回 `VITE_USE_SUPABASE=0` 時，localStorage 模式仍可運作

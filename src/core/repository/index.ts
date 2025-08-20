@@ -78,6 +78,8 @@ export interface Order {
   preferredTimeStart: string
   preferredTimeEnd: string
   referrerCode?: string
+  paymentMethod?: 'cash' | 'transfer' | 'card' | 'other'
+  paymentStatus?: 'unpaid' | 'paid' | 'partial'
   serviceItems: Array<{
     productId?: string
     name: string
@@ -89,10 +91,14 @@ export interface Order {
   status: 'draft' | 'confirmed' | 'in_progress' | 'completed' | 'canceled'
   platform: '日' | '同' | '黃' | '今'
   photos: string[]
+  photosBefore?: string[]
+  photosAfter?: string[]
   signatures: Record<string, string>
   workStartedAt?: string
   workCompletedAt?: string
+  serviceFinishedAt?: string
   canceledReason?: string
+  closedAt?: string
   createdAt: string
   updatedAt: string
 }

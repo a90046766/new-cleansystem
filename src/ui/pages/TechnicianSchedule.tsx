@@ -226,6 +226,28 @@ export default function TechnicianSchedulePage() {
           </div>
         </div>
       ))}
+
+      {/* 當日工作清單（可點擊跳轉訂單） */}
+      <div className="rounded-2xl bg-white p-4 shadow-card">
+        <div className="text-sm font-semibold">當日工作清單</div>
+        <div className="mt-2 space-y-1 text-xs">
+          {works.filter(w=>w.date===date).map((w,i)=>{
+            const t = emailToTech[(w.technicianEmail||'').toLowerCase()]
+            return (
+              <div key={i} className="flex items-center justify-between border-b py-1">
+                <div className="min-w-0 truncate">
+                  {t ? `${t.shortName||t.name}（${t.code}｜${t.region==='all'?'全區':t.region}）` : w.technicianEmail}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span>{w.startTime}~{w.endTime}</span>
+                  <Link to={`/orders/${w.orderId}`} className="rounded bg-gray-100 px-2 py-0.5">訂單 {w.orderId}</Link>
+                </div>
+              </div>
+            )
+          })}
+          {works.filter(w=>w.date===date).length===0 && <div className="text-gray-500">無</div>}
+        </div>
+      </div>
       {user?.role!=='technician' && (
       <div className="rounded-2xl bg-white p-4 shadow-card">
         <div className="text-sm text-gray-500">以下為未在該時段請假的可用技師。可依技能篩選；選擇多人後，回訂單頁指定簽名技師。</div>

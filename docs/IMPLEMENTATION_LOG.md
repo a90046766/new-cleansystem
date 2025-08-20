@@ -6,6 +6,14 @@
 
 ## 新增/調整
 
+- Supabase 連線與雙模切換（2025-08-20）
+  - 新增 `src/utils/supabase.ts` 建立 client（讀取 `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`）
+  - 新增 `src/adapters/index.ts` 工廠：以 `VITE_USE_SUPABASE` 切換 Local/Supabase adapters
+  - 新增 `src/adapters/supabase/orders.ts`：最小 `OrderRepo`（list/get/create/update/cancel/confirm/startWork/finishWork）
+  - 新增 `src/adapters/local/_exports.ts` 與 `src/adapters/supabase/_exports.ts`
+  - 調整 `src/main.tsx` 啟動時動態載入 adapters；路由保護沿用 `authRepo`（暫用 local）
+  - 調整 `src/ui/pages/OrderManagement.tsx` 改用工廠載入之 `orderRepo`
+
 - 技師與客服排班
   - 月曆新增 markers、擁擠度強調（warn/danger）與 tooltips（當日工單/請假數）。
   - 工單重疊檢查：依選定時段動態過濾可指派名單；重疊列表標紅提示。

@@ -32,11 +32,13 @@ import PayrollPage from './ui/pages/Payroll'
 import ReportsPage from './ui/pages/Reports'
 
 // 權限保護
-import { authRepo } from './adapters/local/auth'
+import { loadAdapters } from './adapters/index'
 import { can } from './utils/permissions'
 
+let authRepo: any
+
 function PrivateRoute({ children, permission }: { children: React.ReactNode; permission?: string }) {
-  const user = authRepo.getCurrentUser()
+  const user = authRepo?.getCurrentUser?.()
   
   if (!user) {
     return <Navigate to="/login" replace />
@@ -62,10 +64,13 @@ function PrivateRoute({ children, permission }: { children: React.ReactNode; per
   return <>{children}</>
 }
 
-createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <BrowserRouter>
-      <Routes>
+;(async()=>{
+  const a = await loadAdapters()
+  authRepo = a.authRepo
+  createRoot(document.getElementById('root')!).render(
+    <React.StrictMode>
+      <BrowserRouter>
+        <Routes>
         {/* 公開路由 */}
         <Route path="/login" element={<LoginPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
@@ -97,7 +102,8 @@ createRoot(document.getElementById('root')!).render(
           <Route path="/reports" element={<PrivateRoute permission="reports.view"><ReportsPage /></PrivateRoute>} />
           <Route path="/me" element={<PrivateRoute><PageProfile /></PrivateRoute>} />
         </Route>
-      </Routes>
-    </BrowserRouter>
-  </React.StrictMode>
-)
+        </Routes>
+      </BrowserRouter>
+    </React.StrictMode>
+  )
+})()

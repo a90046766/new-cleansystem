@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
-import { orderRepo } from '../../adapters/local/orders'
 import { getActivePercent } from '../../utils/promotions'
 import { Link } from 'react-router-dom'
 import { authRepo } from '../../adapters/local/auth'
 import { can } from '../../utils/permissions'
+import { loadAdapters } from '../../adapters'
 
 export default function OrderManagementPage() {
   const [rows, setRows] = useState<any[]>([])
+  const [repos, setRepos] = useState<any>(null)
   const user = authRepo.getCurrentUser()
   const [q, setQ] = useState('')
   const [statusTab, setStatusTab] = useState<'all'|'pending'|'completed'|'closed'>('all')
@@ -15,10 +16,11 @@ export default function OrderManagementPage() {
   const [form, setForm] = useState<any>({ customerName:'', customerPhone:'', customerAddress:'', preferredDate:'', preferredTimeStart:'09:00', preferredTimeEnd:'12:00', platform:'日', referrerCode:'', serviceItems:[{name:'服務',quantity:1,unitPrice:1000}], assignedTechnicians:[], photos:[], signatures:{} })
   const [activePercent, setActivePercent] = useState<number>(0)
   const [products, setProducts] = useState<any[]>([])
-  const load = async () => setRows(await orderRepo.list())
-  useEffect(()=>{ load() },[])
+  const load = async () => { if (!repos) return; setRows(await repos.orderRepo.list()) }
+  useEffect(()=>{ (async()=>{ const a = await loadAdapters(); setRepos(a); })() },[])
+  useEffect(()=>{ if (repos) load() },[repos])
   useEffect(()=>{ getActivePercent().then(setActivePercent) },[creating])
-  useEffect(()=>{ (async()=>{ try { const { productRepo } = await import('../../adapters/local/products'); setProducts(await productRepo.list()) } catch {} })() },[creating])
+  useEffect(()=>{ (async()=>{ try { const a = repos || (await loadAdapters()); setProducts(await a.productRepo.list()) } catch {} })() },[creating, repos])
   const filtered = rows.filter(o => {
     const hit = !q || o.id.includes(q) || (o.customerName||'').includes(q)
     const pfKeys = Object.keys(pf).filter(k=>pf[k])
@@ -143,22 +145,30 @@ export default function OrderManagementPage() {
                   <option value="今">今</option>
                 </select>
               </div>
-              <div className="grid grid-cols-3 gap-2">
-                <select className="rounded border px-2 py-1" value={form.serviceItems[0].productId||''} onChange={e=>{
-                  const val=e.target.value; const it=form.serviceItems[0]; if(!val){ setForm({...form,serviceItems:[{...it, productId:'', name: it.name}]}); return }
-                  const p = products.find((x:any)=>x.id===val); setForm({...form,serviceItems:[{...it, productId: val, name: p?.name || it.name, unitPrice: p?.unitPrice || it.unitPrice}]})
-                }}>
-                  <option value="">自訂</option>
-                  {products.map((p:any)=>(<option key={p.id} value={p.id}>{p.name}（{p.unitPrice}）</option>))}
-                </select>
-                <input className="col-span-2 rounded border px-2 py-1" placeholder="項目" value={form.serviceItems[0].name} onChange={e=>setForm({...form,serviceItems:[{...form.serviceItems[0],name:e.target.value}]})} />
-                <input type="number" className="w-24 rounded border px-2 py-1" placeholder="數量" value={form.serviceItems[0].quantity} onChange={e=>setForm({...form,serviceItems:[{...form.serviceItems[0],quantity:Number(e.target.value)}]})} />
-                <input type="number" className="w-28 rounded border px-2 py-1" placeholder="單價" value={form.serviceItems[0].unitPrice} onChange={e=>setForm({...form,serviceItems:[{...form.serviceItems[0],unitPrice:Number(e.target.value)}]})} />
+              <div className="space-y-2">
+                {form.serviceItems.map((it:any, idx:number) => (
+                  <div key={idx} className="grid grid-cols-6 items-center gap-2">
+                    <select className="col-span-2 rounded border px-2 py-1" value={it.productId||''} onChange={e=>{
+                      const val=e.target.value; const arr=[...form.serviceItems]; if(!val){ arr[idx]={...arr[idx], productId:'', name: it.name}; setForm({...form, serviceItems: arr}); return }
+                      const p = products.find((x:any)=>x.id===val); arr[idx]={...arr[idx], productId: val, name: p?.name || it.name, unitPrice: p?.unitPrice || it.unitPrice}; setForm({...form, serviceItems: arr})
+                    }}>
+                      <option value="">自訂</option>
+                      {products.map((p:any)=>(<option key={p.id} value={p.id}>{p.name}（{p.unitPrice}）</option>))}
+                    </select>
+                    <input className="col-span-2 rounded border px-2 py-1" placeholder="項目" value={it.name} onChange={e=>{ const arr=[...form.serviceItems]; arr[idx]={...arr[idx], name:e.target.value}; setForm({...form, serviceItems: arr}) }} />
+                    <input type="number" className="rounded border px-2 py-1" placeholder="數量" value={it.quantity} onChange={e=>{ const arr=[...form.serviceItems]; arr[idx]={...arr[idx], quantity:Number(e.target.value)}; setForm({...form, serviceItems: arr}) }} />
+                    <div className="flex items-center gap-2">
+                      <input type="number" className="w-24 rounded border px-2 py-1" placeholder="單價" value={it.unitPrice} onChange={e=>{ const arr=[...form.serviceItems]; arr[idx]={...arr[idx], unitPrice:Number(e.target.value)}; setForm({...form, serviceItems: arr}) }} />
+                      <button onClick={()=>{ const arr=[...form.serviceItems]; arr.splice(idx,1); setForm({...form, serviceItems: arr.length?arr:[{ name:'服務', quantity:1, unitPrice:0 }]}) }} className="rounded bg-gray-100 px-2 py-1 text-xs">刪</button>
+                    </div>
+                  </div>
+                ))}
+                <button onClick={()=>setForm({...form, serviceItems:[...form.serviceItems, { name:'', quantity:1, unitPrice:0 }]})} className="rounded bg-gray-100 px-2 py-1 text-xs">新增品項</button>
               </div>
             </div>
             <div className="mt-3 flex justify-end gap-2">
               <button onClick={()=>setCreating(false)} className="rounded-lg bg-gray-100 px-3 py-1">取消</button>
-              <button onClick={async()=>{ const percent = await getActivePercent(); const items = form.serviceItems.map((it:any)=> percent>0 ? ({ ...it, unitPrice: Math.round(it.unitPrice * (1 - percent/100)) }) : it); let memberId: string|undefined = undefined; if ((form.memberCode||'').startsWith('MO')) { try { const { memberRepo } = await import('../../adapters/local/members'); const m = await memberRepo.findByCode(form.memberCode); if (m) memberId = m.id } catch {} } await orderRepo.create({ ...form, status:'draft', platform: form.platform||'日', memberId, serviceItems: items } as any); setCreating(false); setForm({ customerName:'', customerPhone:'', customerAddress:'', preferredDate:'', preferredTimeStart:'09:00', preferredTimeEnd:'12:00', platform:'日', referrerCode:'', memberCode:'', serviceItems:[{productId:'',name:'服務',quantity:1,unitPrice:1000}], assignedTechnicians:[], photos:[], signatures:{} }); load() }} className="rounded-lg bg-brand-500 px-3 py-1 text-white">建立</button>
+              <button onClick={async()=>{ if(!repos) return; const percent = await getActivePercent(); const items = form.serviceItems.map((it:any)=> percent>0 ? ({ ...it, unitPrice: Math.round(it.unitPrice * (1 - percent/100)) }) : it); let memberId: string|undefined = undefined; if ((form.memberCode||'').startsWith('MO')) { try { const a = repos; const m = await a.memberRepo.findByCode(form.memberCode); if (m) memberId = m.id } catch {} } await repos.orderRepo.create({ ...form, status:'draft', platform: form.platform||'日', memberId, serviceItems: items } as any); setCreating(false); setForm({ customerName:'', customerPhone:'', customerAddress:'', preferredDate:'', preferredTimeStart:'09:00', preferredTimeEnd:'12:00', platform:'日', referrerCode:'', memberCode:'', serviceItems:[{productId:'',name:'服務',quantity:1,unitPrice:1000}], assignedTechnicians:[], photos:[], signatures:{} }); load() }} className="rounded-lg bg-brand-500 px-3 py-1 text-white">建立</button>
             </div>
           </div>
         </div>

@@ -15,6 +15,14 @@ export default function PageOrderDetail() {
     const [itemsDraft, setItemsDraft] = useState([]);
     const [memberCode, setMemberCode] = useState('');
     const [memberName, setMemberName] = useState('');
+    const [timeLeftSec, setTimeLeftSec] = useState(0);
+    const [createdAtEdit, setCreatedAtEdit] = useState('');
+    const [dateEdit, setDateEdit] = useState('');
+    const [startEdit, setStartEdit] = useState('');
+    const [endEdit, setEndEdit] = useState('');
+    const [payMethod, setPayMethod] = useState('');
+    const [payStatus, setPayStatus] = useState('');
+    const [signAs, setSignAs] = useState('technician');
     const user = authRepo.getCurrentUser();
     useEffect(() => { if (id)
         orderRepo.get(id).then(setOrder); }, [id]);
@@ -33,8 +41,63 @@ export default function PageOrderDetail() {
         }
     }
     catch { } })(); }, [order?.memberId]);
+    useEffect(() => {
+        if (!order)
+            return;
+        const toLocal = (iso) => {
+            try {
+                return iso.slice(0, 19) + (iso.includes('Z') ? '' : '');
+            }
+            catch {
+                return '';
+            }
+        };
+        setCreatedAtEdit(order.createdAt?.slice(0, 16).replace('T', 'T') || new Date().toISOString().slice(0, 16));
+        setDateEdit(order.preferredDate || '');
+        setStartEdit(order.preferredTimeStart || '09:00');
+        setEndEdit(order.preferredTimeEnd || '12:00');
+        setPayMethod(order.paymentMethod || '');
+        setPayStatus(order.paymentStatus || '');
+    }, [order]);
     const [products, setProducts] = useState([]);
     useEffect(() => { (async () => { const { productRepo } = await import('../../adapters/local/products'); setProducts(await productRepo.list()); })(); }, []);
+    // 倒數計時（開始服務後 N 分鐘內不可按「服務完成」；由設定決定）
+    useEffect(() => {
+        if (!order?.workStartedAt || order.status === 'completed' || order.status === 'canceled') {
+            setTimeLeftSec(0);
+            return;
+        }
+        const parseTs = (s) => {
+            if (!s)
+                return 0;
+            if (s.includes('T'))
+                return Date.parse(s);
+            const d = new Date(s);
+            return isNaN(d.getTime()) ? 0 : d.getTime();
+        };
+        let h;
+        (async () => {
+            try {
+                const { settingsRepo } = await import('../../adapters/local/settings');
+                const s = await settingsRepo.get();
+                const COOLDOWN_MS = (s.countdownEnabled ? s.countdownMinutes : 0) * 60 * 1000;
+                if (!COOLDOWN_MS) {
+                    setTimeLeftSec(0);
+                    return;
+                }
+                const started = parseTs(order.workStartedAt);
+                const endAt = started + COOLDOWN_MS;
+                const tick = () => { const now = Date.now(); const left = Math.max(0, Math.floor((endAt - now) / 1000)); setTimeLeftSec(left); };
+                tick();
+                h = setInterval(tick, 1000);
+            }
+            catch {
+                setTimeLeftSec(0);
+            }
+        })();
+        return () => { if (h)
+            clearInterval(h); };
+    }, [order?.workStartedAt, order?.status]);
     if (!order)
         return _jsx("div", { children: "\u8F09\u5165\u4E2D..." });
     const isAdminOrSupport = user?.role === 'admin' || user?.role === 'support';
@@ -69,7 +132,16 @@ export default function PageOrderDetail() {
                             catch (e) {
                                 alert(e?.message || '刪除失敗');
                             }
-                        }, children: "\u522A\u9664\uFF08\u8349\u7A3F\uFF09" }))] }), _jsx("div", { className: "rounded-2xl bg-white p-4 shadow-card", children: _jsxs("div", { className: "flex items-center justify-between", children: [_jsxs("div", { children: [_jsx("div", { className: "text-base font-semibold", children: order.customerName }), _jsx("div", { className: "text-brand-600 underline", children: order.customerAddress })] }), _jsx("a", { href: `tel:${order.customerPhone}`, className: "rounded-full bg-brand-500 px-3 py-2 text-white", children: "\u64A5\u6253" })] }) }), _jsxs("div", { className: "rounded-2xl bg-white p-4 shadow-card", children: [_jsx(SectionTitle, { children: "\u9810\u7D04\u8CC7\u8A0A" }), _jsxs("div", { className: "mt-3 space-y-2 text-sm", children: [_jsxs("div", { children: ["\u4E0B\u55AE\u6642\u9593\uFF1A", new Date(order.createdAt).toLocaleString('zh-TW')] }), _jsxs("div", { children: ["\u670D\u52D9\u6642\u9593\uFF1A", order.preferredDate || '', " ", order.preferredTimeStart, "~", order.preferredTimeEnd] }), _jsxs("div", { className: "text-xs text-gray-500", children: ["\u63A8\u85A6\u78BC\uFF1A", order.referrerCode || '-', " ", order.referrerCode && (_jsx("button", { className: "ml-2 underline", onClick: () => navigator.clipboard.writeText(order.referrerCode), children: "\u8907\u88FD" }))] }), _jsxs("div", { className: "text-xs text-gray-700", children: ["\u6703\u54E1\uFF1A", can(user, 'orders.update') ? (_jsxs("span", { className: "inline-flex items-center gap-2", children: [_jsx("input", { className: "rounded border px-2 py-1 text-sm", placeholder: "\u8F38\u5165 MOxxxx", value: memberCode, onChange: e => setMemberCode(e.target.value) }), _jsx("button", { className: "rounded bg-gray-900 px-2 py-1 text-white", onClick: async () => {
+                        }, children: "\u522A\u9664\uFF08\u8349\u7A3F\uFF09" }))] }), _jsxs("div", { className: "rounded-2xl bg-white p-4 shadow-card", children: [_jsx(SectionTitle, { children: "\u5BA2\u6236\u8CC7\u6599" }), _jsxs("div", { className: "mt-3 grid grid-cols-2 gap-3 text-sm", children: [_jsxs("div", { children: ["\u59D3\u540D\uFF1A", _jsx("input", { className: "w-full rounded border px-2 py-1", value: order.customerName || '', onChange: async (e) => { await orderRepo.update(order.id, { customerName: e.target.value }); const o = await orderRepo.get(order.id); setOrder(o); } })] }), _jsxs("div", { children: ["\u624B\u6A5F\uFF1A", _jsxs("div", { className: "flex gap-2", children: [_jsx("input", { className: "w-full rounded border px-2 py-1", value: order.customerPhone || '', onChange: async (e) => { await orderRepo.update(order.id, { customerPhone: e.target.value }); const o = await orderRepo.get(order.id); setOrder(o); } }), _jsx("a", { href: `tel:${order.customerPhone}`, className: "rounded bg-brand-500 px-3 py-1 text-white", children: "\u64A5\u6253" })] })] }), _jsxs("div", { className: "col-span-2", children: ["\u5730\u5740\uFF1A", _jsx("input", { className: "w-full rounded border px-2 py-1", value: order.customerAddress || '', onChange: async (e) => { await orderRepo.update(order.id, { customerAddress: e.target.value }); const o = await orderRepo.get(order.id); setOrder(o); } })] }), _jsxs("div", { children: ["\u6703\u54E1\u7DE8\u865F\uFF1A", _jsx("span", { className: "text-gray-700", children: memberCode || '—' })] })] })] }), _jsxs("div", { className: "rounded-2xl bg-white p-4 shadow-card", children: [_jsx(SectionTitle, { children: "\u670D\u52D9\u5167\u5BB9" }), _jsxs("div", { className: "mt-3 text-sm", children: [!editItems ? (_jsxs("div", { className: "rounded border", children: [_jsxs("div", { className: "grid grid-cols-4 bg-gray-50 px-2 py-1 text-xs text-gray-600", children: [_jsx("div", { children: "\u9805\u76EE" }), _jsx("div", { children: "\u6578\u91CF" }), _jsx("div", { children: "\u55AE\u50F9" }), _jsx("div", { className: "text-right", children: "\u5C0F\u8A08" })] }), (order.serviceItems || []).map((it, i) => {
+                                        const sub = it.quantity * it.unitPrice;
+                                        return _jsxs("div", { className: "grid grid-cols-4 items-center px-2 py-1 text-sm", children: [_jsx("div", { children: it.name }), _jsx("div", { children: it.quantity }), _jsx("div", { children: it.unitPrice }), _jsx("div", { className: "text-right", children: sub })] }, i);
+                                    }), _jsxs("div", { className: "border-t px-2 py-1 text-right text-rose-600", children: ["\u7E3D\u8A08\uFF1A", _jsx("span", { className: "text-base font-semibold", children: (order.serviceItems || []).reduce((s, it) => s + it.unitPrice * it.quantity, 0) })] })] })) : (_jsxs("div", { className: "mt-2 space-y-2 text-sm", children: [itemsDraft.map((it, i) => (_jsxs("div", { className: "grid grid-cols-6 items-center gap-2", children: [_jsxs("select", { className: "col-span-2 rounded border px-2 py-1", value: it.productId || '', onChange: async (e) => { const val = e.target.value; const arr = [...itemsDraft]; if (val) {
+                                                    const p = products.find((x) => x.id === val);
+                                                    arr[i] = { ...arr[i], productId: val, name: p?.name || it.name, unitPrice: p?.unitPrice || it.unitPrice };
+                                                }
+                                                else {
+                                                    arr[i] = { ...arr[i], productId: undefined };
+                                                } setItemsDraft(arr); }, children: [_jsx("option", { value: "", children: "\u81EA\u8A02" }), products.map((p) => (_jsxs("option", { value: p.id, children: [p.name, "\uFF08", p.unitPrice, "\uFF09"] }, p.id)))] }), _jsx("input", { className: "col-span-2 rounded border px-2 py-1", value: it.name, onChange: e => { const arr = [...itemsDraft]; arr[i] = { ...arr[i], name: e.target.value }; setItemsDraft(arr); } }), _jsx("input", { type: "number", className: "rounded border px-2 py-1", value: it.quantity, onChange: e => { const arr = [...itemsDraft]; arr[i] = { ...arr[i], quantity: Number(e.target.value) }; setItemsDraft(arr); } }), _jsx("input", { type: "number", className: "rounded border px-2 py-1", value: it.unitPrice, onChange: e => { const arr = [...itemsDraft]; arr[i] = { ...arr[i], unitPrice: Number(e.target.value) }; setItemsDraft(arr); } }), _jsx("button", { onClick: () => { const arr = [...itemsDraft]; arr.splice(i, 1); setItemsDraft(arr); }, className: "rounded bg-gray-100 px-2 py-1", children: "\u522A" })] }, i))), _jsx("div", { children: _jsx("button", { onClick: () => setItemsDraft([...itemsDraft, { name: '', quantity: 1, unitPrice: 0 }]), className: "rounded bg-gray-100 px-2 py-1", children: "\u65B0\u589E\u9805\u76EE" }) }), _jsx("div", { className: "text-right", children: _jsx("button", { onClick: async () => { await orderRepo.update(order.id, { serviceItems: itemsDraft }); const o = await orderRepo.get(order.id); setOrder(o); setEditItems(false); }, className: "rounded bg-brand-500 px-3 py-1 text-white", children: "\u5132\u5B58" }) })] })), user?.role !== 'technician' && _jsx("div", { className: "mt-2 text-right", children: _jsx("button", { onClick: () => setEditItems(e => !e), className: "rounded bg-gray-100 px-2 py-1 text-xs", children: editItems ? '取消' : '編輯項目' }) })] })] }), _jsxs("div", { className: "rounded-2xl bg-white p-4 shadow-card", children: [_jsx(SectionTitle, { children: "\u9810\u7D04\u8CC7\u8A0A" }), _jsxs("div", { className: "mt-3 space-y-2 text-sm", children: [_jsxs("div", { className: "grid grid-cols-2 gap-2", children: [_jsxs("div", { children: ["\u4E0B\u55AE\u6642\u9593\uFF1A", _jsx("input", { type: "datetime-local", className: "w-full rounded border px-2 py-1", value: createdAtEdit, onChange: e => setCreatedAtEdit(e.target.value), onBlur: async () => { await orderRepo.update(order.id, { createdAt: new Date(createdAtEdit).toISOString() }); const o = await orderRepo.get(order.id); setOrder(o); } })] }), _jsxs("div", { className: "grid grid-cols-3 gap-2", children: [_jsx("input", { type: "date", className: "rounded border px-2 py-1", value: dateEdit, onChange: e => setDateEdit(e.target.value), onBlur: async () => { await orderRepo.update(order.id, { preferredDate: dateEdit }); const o = await orderRepo.get(order.id); setOrder(o); } }), _jsx("input", { type: "time", className: "rounded border px-2 py-1", value: startEdit, onChange: e => setStartEdit(e.target.value), onBlur: async () => { await orderRepo.update(order.id, { preferredTimeStart: startEdit }); const o = await orderRepo.get(order.id); setOrder(o); } }), _jsx("input", { type: "time", className: "rounded border px-2 py-1", value: endEdit, onChange: e => setEndEdit(e.target.value), onBlur: async () => { await orderRepo.update(order.id, { preferredTimeEnd: endEdit }); const o = await orderRepo.get(order.id); setOrder(o); } })] })] }), _jsxs("div", { className: "text-xs text-gray-500", children: ["\u63A8\u85A6\u78BC\uFF1A", order.referrerCode || '-', " ", order.referrerCode && (_jsx("button", { className: "ml-2 underline", onClick: () => navigator.clipboard.writeText(order.referrerCode), children: "\u8907\u88FD" }))] }), _jsxs("div", { className: "grid grid-cols-2 gap-2 text-xs", children: [_jsxs("div", { children: ["\u4ED8\u6B3E\u65B9\u5F0F\uFF1A", _jsxs("select", { className: "rounded border px-2 py-1", value: payMethod, onChange: async (e) => { setPayMethod(e.target.value); await orderRepo.update(order.id, { paymentMethod: e.target.value }); const o = await orderRepo.get(order.id); setOrder(o); }, children: [_jsx("option", { value: "", children: "\u2014" }), _jsx("option", { value: "cash", children: "\u73FE\u91D1" }), _jsx("option", { value: "transfer", children: "\u8F49\u5E33" }), _jsx("option", { value: "card", children: "\u5237\u5361" }), _jsx("option", { value: "other", children: "\u5176\u4ED6" })] })] }), _jsxs("div", { children: ["\u4ED8\u6B3E\u72C0\u614B\uFF1A", _jsxs("select", { className: "rounded border px-2 py-1", value: payStatus, onChange: async (e) => { setPayStatus(e.target.value); await orderRepo.update(order.id, { paymentStatus: e.target.value }); const o = await orderRepo.get(order.id); setOrder(o); }, children: [_jsx("option", { value: "", children: "\u2014" }), _jsx("option", { value: "unpaid", children: "\u672A\u4ED8\u6B3E" }), _jsx("option", { value: "partial", children: "\u90E8\u5206\u4ED8\u6B3E" }), _jsx("option", { value: "paid", children: "\u5DF2\u4ED8\u6B3E" })] })] })] }), _jsxs("div", { className: "text-xs text-gray-700", children: ["\u6703\u54E1\uFF1A", can(user, 'orders.update') ? (_jsxs("span", { className: "inline-flex items-center gap-2", children: [_jsx("input", { className: "rounded border px-2 py-1 text-sm", placeholder: "\u8F38\u5165 MOxxxx", value: memberCode, onChange: e => setMemberCode(e.target.value) }), _jsx("button", { className: "rounded bg-gray-900 px-2 py-1 text-white", onClick: async () => {
                                                     const code = (memberCode || '').trim().toUpperCase();
                                                     if (!code) {
                                                         await orderRepo.update(order.id, { memberId: undefined });
@@ -102,23 +174,23 @@ export default function PageOrderDetail() {
                                                     await orderRepo.update(order.id, { signatureTechnician: val });
                                                     const o = await orderRepo.get(order.id);
                                                     setOrder(o);
-                                                }, children: [_jsx("option", { value: "", children: "\u8ACB\u9078\u64C7" }), order.assignedTechnicians.map((n, i) => (_jsx("option", { value: n, children: n }, i)))] }), _jsx("button", { onClick: () => setSignOpen(true), className: "ml-2 rounded bg-gray-900 px-3 py-1 text-white", children: "\u7C3D\u540D" })] })] })), _jsxs("div", { className: "mt-2", children: [_jsxs("div", { className: "flex items-center justify-between", children: [_jsx("div", { className: "font-semibold", children: "\u9805\u76EE\u660E\u7D30\uFF1A" }), user?.role !== 'technician' && _jsx("button", { onClick: () => setEditItems(e => !e), className: "rounded bg-gray-100 px-2 py-1 text-xs", children: editItems ? '取消' : '編輯項目' })] }), !editItems ? (_jsxs(_Fragment, { children: [order.serviceItems?.map((it, i) => (_jsxs("div", { children: [it.name, " \u00D7 ", it.quantity, " ", _jsxs("span", { className: "float-right font-bold text-rose-500", children: ["$", it.unitPrice] })] }, i))), _jsxs("div", { className: "mt-1 text-xs text-gray-500", children: ["\u5408\u8A08\uFF1A", (order.serviceItems || []).reduce((s, it) => s + it.unitPrice * it.quantity, 0)] })] })) : (_jsxs("div", { className: "mt-2 space-y-2 text-sm", children: [itemsDraft.map((it, i) => (_jsxs("div", { className: "grid grid-cols-6 items-center gap-2", children: [_jsxs("select", { className: "col-span-2 rounded border px-2 py-1", value: it.productId || '', onChange: async (e) => { const val = e.target.value; const arr = [...itemsDraft]; if (val) {
-                                                            const p = products.find((x) => x.id === val);
-                                                            arr[i] = { ...arr[i], productId: val, name: p?.name || it.name, unitPrice: p?.unitPrice || it.unitPrice };
-                                                        }
-                                                        else {
-                                                            arr[i] = { ...arr[i], productId: undefined };
-                                                        } setItemsDraft(arr); }, children: [_jsx("option", { value: "", children: "\u81EA\u8A02" }), products.map((p) => (_jsxs("option", { value: p.id, children: [p.name, "\uFF08", p.unitPrice, "\uFF09"] }, p.id)))] }), _jsx("input", { className: "col-span-2 rounded border px-2 py-1", value: it.name, onChange: e => { const arr = [...itemsDraft]; arr[i] = { ...arr[i], name: e.target.value }; setItemsDraft(arr); } }), _jsx("input", { type: "number", className: "rounded border px-2 py-1", value: it.quantity, onChange: e => { const arr = [...itemsDraft]; arr[i] = { ...arr[i], quantity: Number(e.target.value) }; setItemsDraft(arr); } }), _jsx("input", { type: "number", className: "rounded border px-2 py-1", value: it.unitPrice, onChange: e => { const arr = [...itemsDraft]; arr[i] = { ...arr[i], unitPrice: Number(e.target.value) }; setItemsDraft(arr); } }), _jsx("button", { onClick: () => { const arr = [...itemsDraft]; arr.splice(i, 1); setItemsDraft(arr); }, className: "rounded bg-gray-100 px-2 py-1", children: "\u522A" })] }, i))), _jsx("div", { children: _jsx("button", { onClick: () => setItemsDraft([...itemsDraft, { name: '', quantity: 1, unitPrice: 0 }]), className: "rounded bg-gray-100 px-2 py-1", children: "\u65B0\u589E\u9805\u76EE" }) }), _jsx("div", { className: "text-right", children: _jsx("button", { onClick: async () => { await orderRepo.update(order.id, { serviceItems: itemsDraft }); const o = await orderRepo.get(order.id); setOrder(o); setEditItems(false); }, className: "rounded bg-brand-500 px-3 py-1 text-white", children: "\u5132\u5B58" }) })] }))] })] })] }), _jsx(SignatureModal, { open: signOpen, onClose: () => setSignOpen(false), onSave: async (dataUrl) => { await orderRepo.update(order.id, { signatures: { ...(order.signatures || {}), [order.signatureTechnician || 'technician']: dataUrl } }); const o = await orderRepo.get(order.id); setOrder(o); setSignOpen(false); } }), _jsxs("div", { className: "rounded-2xl bg-white p-4 shadow-card", children: [_jsx(SectionTitle, { children: "\u7167\u7247" }), _jsxs("div", { className: "mt-3", children: [_jsx(PhotoGrid, { urls: order.photos || [] }), _jsxs("div", { className: "mt-3 text-sm", children: [_jsx("label", { className: "mb-1 block", children: "\u4E0A\u50B3\u7167\u7247\uFF08\u6700\u591A 20 \u5F35\uFF0C\u2264200KB\uFF09" }), _jsx("input", { type: "file", accept: "image/*", multiple: true, onChange: async (e) => {
-                                            const files = Array.from(e.target.files || []);
-                                            const remain = Math.max(0, 20 - (order.photos?.length || 0));
-                                            const take = files.slice(0, remain);
-                                            const imgs = [];
-                                            for (const f of take)
-                                                imgs.push(await compressImageToDataUrl(f, 200));
-                                            await orderRepo.update(order.id, { photos: [...(order.photos || []), ...imgs] });
-                                            const o = await orderRepo.get(order.id);
-                                            setOrder(o);
-                                        } })] })] })] }), _jsxs("div", { className: "rounded-2xl bg-white p-4 shadow-card", children: [_jsx(SectionTitle, { children: "\u8A02\u55AE\u5DF2\u5B8C\u6210" }), _jsxs("div", { className: "mt-2", children: [_jsx(TimelineStep, { index: 1, title: "\u806F\u7D61\u5BA2\u6236", time: "2025/07/14 13:57:50" }), _jsx(TimelineStep, { index: 2, title: "\u78BA\u8A8D\u5831\u50F9", time: "2025/07/14 13:57:51" }), _jsx(TimelineStep, { index: 3, title: "\u78BA\u8A8D\u6D3E\u6848", time: "2025/07/14 13:58:33" }), _jsx(TimelineStep, { index: 4, title: "\u670D\u52D9\u5B8C\u6210", time: "2025/08/17 20:25:29" })] }), _jsxs("div", { className: "mt-3 flex gap-2", children: [_jsx("button", { onClick: async () => { if (!confirm('開工前請再次告知公司承諾並取得同意。是否開始？'))
-                                    return; await orderRepo.startWork(order.id, new Date().toISOString()); const o = await orderRepo.get(order.id); setOrder(o); }, className: "rounded bg-brand-500 px-3 py-1 text-white", children: "\u958B\u59CB\u5DE5\u4F5C" }), _jsx("button", { onClick: async () => { if (!confirm('是否確認服務完成？'))
-                                    return; await orderRepo.finishWork(order.id, new Date().toISOString()); const o = await orderRepo.get(order.id); setOrder(o); }, className: "rounded bg-gray-900 px-3 py-1 text-white", children: "\u5B8C\u6210\u5DE5\u4F5C" })] })] })] }));
+                                                }, children: [_jsx("option", { value: "", children: "\u8ACB\u9078\u64C7" }), order.assignedTechnicians.map((n, i) => (_jsx("option", { value: n, children: n }, i)))] }), _jsx("button", { onClick: () => setSignOpen(true), className: "ml-2 rounded bg-gray-900 px-3 py-1 text-white", children: "\u7C3D\u540D" })] })] }))] })] }), _jsx(SignatureModal, { open: signOpen, onClose: () => setSignOpen(false), onSave: async (dataUrl) => { await orderRepo.update(order.id, { signatures: { ...(order.signatures || {}), [order.signatureTechnician || 'technician']: dataUrl } }); const o = await orderRepo.get(order.id); setOrder(o); setSignOpen(false); } }), _jsxs("div", { className: "rounded-2xl bg-white p-4 shadow-card", children: [_jsx(SectionTitle, { children: "\u670D\u52D9\u7167\u7247" }), _jsxs("div", { className: "mt-3 grid grid-cols-1 gap-4 md:grid-cols-2", children: [_jsxs("div", { children: [_jsx("div", { className: "mb-1 font-semibold", children: "\u6E05\u6D17\u524D" }), _jsx(PhotoGrid, { urls: order.photosBefore || [] }), _jsx("div", { className: "mt-2 text-sm", children: _jsx("input", { type: "file", accept: "image/*", multiple: true, onChange: async (e) => {
+                                                const files = Array.from(e.target.files || []);
+                                                const imgs = [];
+                                                for (const f of files)
+                                                    imgs.push(await compressImageToDataUrl(f, 200));
+                                                await orderRepo.update(order.id, { photosBefore: [...(order.photosBefore || []), ...imgs] });
+                                                const o = await orderRepo.get(order.id);
+                                                setOrder(o);
+                                            } }) })] }), _jsxs("div", { children: [_jsx("div", { className: "mb-1 font-semibold", children: "\u6E05\u6D17\u5F8C" }), _jsx(PhotoGrid, { urls: order.photosAfter || [] }), _jsx("div", { className: "mt-2 text-sm", children: _jsx("input", { type: "file", accept: "image/*", multiple: true, onChange: async (e) => {
+                                                const files = Array.from(e.target.files || []);
+                                                const imgs = [];
+                                                for (const f of files)
+                                                    imgs.push(await compressImageToDataUrl(f, 200));
+                                                await orderRepo.update(order.id, { photosAfter: [...(order.photosAfter || []), ...imgs] });
+                                                const o = await orderRepo.get(order.id);
+                                                setOrder(o);
+                                            } }) })] })] })] }), _jsxs("div", { className: "rounded-2xl bg-white p-4 shadow-card", children: [_jsx(SectionTitle, { children: "\u8A02\u55AE\u9032\u5EA6" }), _jsxs("div", { className: "mt-2", children: [_jsx(TimelineStep, { index: 1, title: "\u806F\u7D61\u5BA2\u6236", time: "2025/07/14 13:57:50" }), _jsx(TimelineStep, { index: 2, title: "\u78BA\u8A8D\u5831\u50F9", time: "2025/07/14 13:57:51" }), _jsx(TimelineStep, { index: 3, title: "\u78BA\u8A8D\u6D3E\u6848", time: "2025/07/14 13:58:33" }), _jsx(TimelineStep, { index: 4, title: "\u670D\u52D9\u5B8C\u6210", time: "2025/08/17 20:25:29" })] }), _jsxs("div", { className: "mt-3 flex gap-2", children: [_jsx("button", { onClick: async () => { if (!confirm('開始服務前請再次告知公司承諾並取得同意。是否開始？'))
+                                    return; await orderRepo.startWork(order.id, new Date().toISOString()); const o = await orderRepo.get(order.id); setOrder(o); }, className: "rounded bg-brand-500 px-3 py-1 text-white", children: "\u958B\u59CB\u670D\u52D9" }), _jsx("button", { disabled: timeLeftSec > 0, onClick: async () => { if (!confirm('是否確認服務完成？'))
+                                    return; await orderRepo.finishWork(order.id, new Date().toISOString()); const o = await orderRepo.get(order.id); setOrder(o); }, className: `rounded px-3 py-1 text-white ${timeLeftSec > 0 ? 'bg-gray-400' : 'bg-gray-900'}`, children: timeLeftSec > 0 ? `服務完成（剩餘 ${String(Math.floor(timeLeftSec / 60)).padStart(2, '0')}:${String(timeLeftSec % 60).padStart(2, '0')}）` : '服務完成' })] })] })] }));
 }

@@ -14,3 +14,17 @@
 
 狀態：
 - 當前目標 M1：底座（權限門閘、健康檢查、Repository 介面、本機 Adapter 骨架）
+
+## 環境變數與雙模資料來源（Local / Supabase）
+
+本專案使用 Repository Pattern，可在 localStorage 與 Supabase 之間切換。
+
+在本機或 Vercel 設定以下環境變數：
+
+```
+VITE_USE_SUPABASE=0
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
+```
+
+將 `VITE_USE_SUPABASE` 設為 `1` 即啟用 Supabase 模式。已先接上最小的 `orders` Adapter，其餘模組將逐步切換。

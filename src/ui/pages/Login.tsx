@@ -129,9 +129,7 @@ export default function LoginPage() {
           {loading ? '登入中...' : '登入'}
         </button>
 
-        <div className="mt-4 text-center text-sm text-gray-500">
-          測試帳號：a90046766@gmail.com / a123123
-        </div>
+        {/* 移除示範帳密顯示（依要求） */}
       </form>
     </div>
   )

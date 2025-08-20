@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { inventoryRepo } from '../../adapters/local/inventory'
+import { loadAdapters } from '../../adapters'
 import { authRepo } from '../../adapters/local/auth'
 import { Navigate } from 'react-router-dom'
 
@@ -7,11 +7,13 @@ export default function InventoryPage() {
   const u = authRepo.getCurrentUser()
   if (u && u.role==='technician') return <Navigate to="/dispatch" replace />
   const [rows, setRows] = useState<any[]>([])
+  const [repos, setRepos] = useState<any>(null)
   const [edit, setEdit] = useState<any | null>(null)
   const [products, setProducts] = useState<any[]>([])
-  const load = async () => setRows(await inventoryRepo.list())
-  useEffect(() => { load() }, [])
-  useEffect(()=>{ (async()=>{ try { const { productRepo } = await import('../../adapters/local/products'); setProducts(await productRepo.list()) } catch {} })() },[])
+  const load = async () => { if(!repos) return; setRows(await repos.inventoryRepo.list()) }
+  useEffect(() => { (async()=>{ const a = await loadAdapters(); setRepos(a) })() }, [])
+  useEffect(() => { if(repos) load() }, [repos])
+  useEffect(()=>{ (async()=>{ if(!repos) return; setProducts(await repos.productRepo.list()) })() },[repos])
   return (
     <div className="space-y-3">
       <div className="text-lg font-semibold">庫存管理（內部用）</div>
@@ -25,7 +27,7 @@ export default function InventoryPage() {
             </div>
             <div className="flex items-center gap-2">
               <button onClick={()=>setEdit(p)} className="rounded-lg bg-gray-900 px-3 py-1 text-white">編輯</button>
-              <button onClick={async()=>{ const { confirmTwice } = await import('../kit'); if(await confirmTwice('確認刪除該庫存品項？','刪除後無法復原，仍要刪除？')){ await inventoryRepo.remove(p.id); load() } }} className="rounded-lg bg-rose-500 px-3 py-1 text-white">刪除</button>
+              <button onClick={async()=>{ const { confirmTwice } = await import('../kit'); if(await confirmTwice('確認刪除該庫存品項？','刪除後無法復原，仍要刪除？')){ if(!repos) return; await repos.inventoryRepo.remove(p.id); load() } }} className="rounded-lg bg-rose-500 px-3 py-1 text-white">刪除</button>
             </div>
           </div>
         </div>
@@ -50,7 +52,7 @@ export default function InventoryPage() {
             </div>
             <div className="mt-3 flex justify-end gap-2">
               <button onClick={()=>setEdit(null)} className="rounded-lg bg-gray-100 px-3 py-1">取消</button>
-              <button onClick={async()=>{ await inventoryRepo.upsert(edit); setEdit(null); load() }} className="rounded-lg bg-brand-500 px-3 py-1 text-white">儲存</button>
+              <button onClick={async()=>{ if(!repos) return; await repos.inventoryRepo.upsert(edit); setEdit(null); load() }} className="rounded-lg bg-brand-500 px-3 py-1 text-white">儲存</button>
             </div>
           </div>
         </div>

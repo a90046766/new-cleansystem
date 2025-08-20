@@ -1,32 +1,36 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useEffect, useState } from 'react';
-import { reservationsRepo } from '../../adapters/local/reservations';
-import { orderRepo } from '../../adapters/local/orders';
+import { loadAdapters } from '../../adapters';
 import { getActivePercent } from '../../utils/promotions';
 export default function ReservationsPage() {
     const [rows, setRows] = useState([]);
+    const [repos, setRepos] = useState(null);
     const [creating, setCreating] = useState(false);
     const [form, setForm] = useState({ customerName: '', customerPhone: '', items: [{ productId: '', name: '服務', unitPrice: 1000, quantity: 1 }] });
     const [products, setProducts] = useState([]);
-    useEffect(() => { (async () => { try {
-        const { productRepo } = await import('../../adapters/local/products');
-        setProducts(await productRepo.list());
-    }
-    catch { } })(); }, []);
-    const load = async () => setRows(await reservationsRepo.list());
-    useEffect(() => { load(); }, []);
+    useEffect(() => { (async () => { const a = await loadAdapters(); setRepos(a); })(); }, []);
+    useEffect(() => { (async () => { if (!repos)
+        return; setProducts(await repos.productRepo.list()); })(); }, [repos]);
+    const load = async () => { if (!repos)
+        return; setRows(await repos.reservationsRepo.list()); };
+    useEffect(() => { if (repos)
+        load(); }, [repos]);
     return (_jsxs("div", { className: "space-y-3", children: [_jsxs("div", { className: "flex items-center justify-between", children: [_jsx("div", { className: "text-lg font-semibold", children: "\u9810\u7D04\u8A02\u55AE" }), _jsx("button", { onClick: () => setCreating(true), className: "rounded-lg bg-brand-500 px-3 py-1 text-white", children: "\u65B0\u589E\u9810\u7D04" })] }), _jsxs("div", { className: "rounded-2xl bg-white p-2 shadow-card", children: [rows.map(r => (_jsxs("div", { className: "flex items-center justify-between border-b p-3 text-sm", children: [_jsxs("div", { children: [_jsx("div", { className: "font-semibold", children: r.customerName }), _jsxs("div", { className: "text-xs text-gray-500", children: [(r.items || []).length, " \u9805\uFF5C\u72C0\u614B ", r.status] }), _jsx(ActivePromoHint, {})] }), _jsxs("div", { className: "flex gap-2", children: [_jsx("button", { onClick: async () => {
                                             const { confirmTwice } = await import('../kit');
                                             if (!(await confirmTwice('取消此預約？', '取消後狀態將改為 canceled，仍要取消？')))
                                                 return;
-                                            await reservationsRepo.update(r.id, { status: 'canceled' });
+                                            if (!repos)
+                                                return;
+                                            await repos.reservationsRepo.update(r.id, { status: 'canceled' });
                                             load();
                                         }, className: "rounded-lg bg-rose-500 px-3 py-1 text-white", children: "\u53D6\u6D88" }), _jsx("button", { onClick: async () => {
                                             const { confirmTwice } = await import('../kit');
                                             if (!(await confirmTwice('轉為正式訂單？', '轉單後請至訂單管理完成指派與確認，仍要轉單？')))
                                                 return;
                                             const percent = await getActivePercent();
-                                            await orderRepo.create({
+                                            if (!repos)
+                                                return;
+                                            await repos.orderRepo.create({
                                                 customerName: r.customerName,
                                                 customerPhone: r.customerPhone,
                                                 customerAddress: '—',
@@ -49,7 +53,8 @@ export default function ReservationsPage() {
                                                 }
                                                 const p = products.find((x) => x.id === val);
                                                 setForm({ ...form, items: [{ ...it, productId: val, name: p?.name || it.name, unitPrice: p?.unitPrice || it.unitPrice }] });
-                                            }, children: [_jsx("option", { value: "", children: "\u81EA\u8A02" }), products.map((p) => (_jsxs("option", { value: p.id, children: [p.name, "\uFF08", p.unitPrice, "\uFF09"] }, p.id)))] }), _jsx("input", { className: "col-span-2 rounded border px-2 py-1", placeholder: "\u9805\u76EE", value: form.items[0].name, onChange: e => setForm({ ...form, items: [{ ...form.items[0], name: e.target.value }] }) }), _jsx("input", { type: "number", className: "w-24 rounded border px-2 py-1", placeholder: "\u55AE\u50F9", value: form.items[0].unitPrice, onChange: e => setForm({ ...form, items: [{ ...form.items[0], unitPrice: Number(e.target.value) }] }) }), _jsx("input", { type: "number", className: "w-24 rounded border px-2 py-1", placeholder: "\u6578\u91CF", value: form.items[0].quantity, onChange: e => setForm({ ...form, items: [{ ...form.items[0], quantity: Number(e.target.value) }] }) })] })] }), _jsxs("div", { className: "mt-3 flex justify-end gap-2", children: [_jsx("button", { onClick: () => setCreating(false), className: "rounded-lg bg-gray-100 px-3 py-1", children: "\u53D6\u6D88" }), _jsx("button", { onClick: async () => { await reservationsRepo.create(form); setCreating(false); setForm({ customerName: '', customerPhone: '', items: [{ name: '服務', unitPrice: 1000, quantity: 1 }] }); load(); }, className: "rounded-lg bg-brand-500 px-3 py-1 text-white", children: "\u5EFA\u7ACB" })] })] }) }))] }));
+                                            }, children: [_jsx("option", { value: "", children: "\u81EA\u8A02" }), products.map((p) => (_jsxs("option", { value: p.id, children: [p.name, "\uFF08", p.unitPrice, "\uFF09"] }, p.id)))] }), _jsx("input", { className: "col-span-2 rounded border px-2 py-1", placeholder: "\u9805\u76EE", value: form.items[0].name, onChange: e => setForm({ ...form, items: [{ ...form.items[0], name: e.target.value }] }) }), _jsx("input", { type: "number", className: "w-24 rounded border px-2 py-1", placeholder: "\u55AE\u50F9", value: form.items[0].unitPrice, onChange: e => setForm({ ...form, items: [{ ...form.items[0], unitPrice: Number(e.target.value) }] }) }), _jsx("input", { type: "number", className: "w-24 rounded border px-2 py-1", placeholder: "\u6578\u91CF", value: form.items[0].quantity, onChange: e => setForm({ ...form, items: [{ ...form.items[0], quantity: Number(e.target.value) }] }) })] })] }), _jsxs("div", { className: "mt-3 flex justify-end gap-2", children: [_jsx("button", { onClick: () => setCreating(false), className: "rounded-lg bg-gray-100 px-3 py-1", children: "\u53D6\u6D88" }), _jsx("button", { onClick: async () => { if (!repos)
+                                        return; await repos.reservationsRepo.create(form); setCreating(false); setForm({ customerName: '', customerPhone: '', items: [{ name: '服務', unitPrice: 1000, quantity: 1 }] }); load(); }, className: "rounded-lg bg-brand-500 px-3 py-1 text-white", children: "\u5EFA\u7ACB" })] })] }) }))] }));
 }
 function ActivePromoHint() {
     const [p, setP] = useState(0);

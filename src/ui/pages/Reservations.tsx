@@ -1,16 +1,17 @@
 import { useEffect, useState } from 'react'
-import { reservationsRepo } from '../../adapters/local/reservations'
-import { orderRepo } from '../../adapters/local/orders'
+import { loadAdapters } from '../../adapters'
 import { getActivePercent } from '../../utils/promotions'
 
 export default function ReservationsPage() {
   const [rows, setRows] = useState<any[]>([])
+  const [repos, setRepos] = useState<any>(null)
   const [creating, setCreating] = useState(false)
   const [form, setForm] = useState<any>({ customerName:'', customerPhone:'', items:[{ productId:'', name:'服務', unitPrice:1000, quantity:1 }] })
   const [products, setProducts] = useState<any[]>([])
-  useEffect(()=>{ (async()=>{ try { const { productRepo } = await import('../../adapters/local/products'); setProducts(await productRepo.list()) } catch {} })() },[])
-  const load = async () => setRows(await reservationsRepo.list())
-  useEffect(()=>{ load() },[])
+  useEffect(()=>{ (async()=>{ const a = await loadAdapters(); setRepos(a) })() },[])
+  useEffect(()=>{ (async()=>{ if(!repos) return; setProducts(await repos.productRepo.list()) })() },[repos])
+  const load = async () => { if(!repos) return; setRows(await repos.reservationsRepo.list()) }
+  useEffect(()=>{ if(repos) load() },[repos])
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -29,14 +30,14 @@ export default function ReservationsPage() {
               <button onClick={async()=>{
                 const { confirmTwice } = await import('../kit')
                 if(!(await confirmTwice('取消此預約？','取消後狀態將改為 canceled，仍要取消？'))) return
-                await reservationsRepo.update(r.id, { status: 'canceled' })
+                if(!repos) return; await repos.reservationsRepo.update(r.id, { status: 'canceled' })
                 load()
               }} className="rounded-lg bg-rose-500 px-3 py-1 text-white">取消</button>
               <button onClick={async()=>{
                 const { confirmTwice } = await import('../kit')
                 if(!(await confirmTwice('轉為正式訂單？','轉單後請至訂單管理完成指派與確認，仍要轉單？'))) return
                 const percent = await getActivePercent()
-                await orderRepo.create({
+                if(!repos) return; await repos.orderRepo.create({
                   customerName: r.customerName,
                   customerPhone: r.customerPhone,
                   customerAddress: '—',
@@ -78,7 +79,7 @@ export default function ReservationsPage() {
             </div>
             <div className="mt-3 flex justify-end gap-2">
               <button onClick={()=>setCreating(false)} className="rounded-lg bg-gray-100 px-3 py-1">取消</button>
-              <button onClick={async()=>{ await reservationsRepo.create(form); setCreating(false); setForm({ customerName:'', customerPhone:'', items:[{ name:'服務', unitPrice:1000, quantity:1 }] }); load() }} className="rounded-lg bg-brand-500 px-3 py-1 text-white">建立</button>
+              <button onClick={async()=>{ if(!repos) return; await repos.reservationsRepo.create(form); setCreating(false); setForm({ customerName:'', customerPhone:'', items:[{ name:'服務', unitPrice:1000, quantity:1 }] }); load() }} className="rounded-lg bg-brand-500 px-3 py-1 text-white">建立</button>
             </div>
           </div>
         </div>

@@ -31,9 +31,10 @@ export default function PageOrderDetail() {
     useEffect(() => { if (order)
         setItemsDraft(order.serviceItems || []); }, [order]);
     useEffect(() => { (async () => { try {
+        if (!repos)
+            return;
         if (order?.memberId) {
-            const { memberRepo } = await import('../../adapters/local/members');
-            const m = await memberRepo.get(order.memberId);
+            const m = await repos.memberRepo.get(order.memberId);
             setMemberCode(m?.code || '');
             setMemberName(m?.name || '');
         }
@@ -42,7 +43,7 @@ export default function PageOrderDetail() {
             setMemberName('');
         }
     }
-    catch { } })(); }, [order?.memberId]);
+    catch { } })(); }, [order?.memberId, repos]);
     useEffect(() => {
         if (!order)
             return;
@@ -158,8 +159,9 @@ export default function PageOrderDetail() {
                                                         return;
                                                     }
                                                     try {
-                                                        const { memberRepo } = await import('../../adapters/local/members');
-                                                        const m = await memberRepo.findByCode(code);
+                                                        if (!repos)
+                                                            return;
+                                                        const m = await repos.memberRepo.findByCode(code);
                                                         if (!m) {
                                                             alert('查無此會員編號');
                                                             return;

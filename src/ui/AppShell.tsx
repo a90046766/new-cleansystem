@@ -11,7 +11,7 @@ function AppBar() {
     <div className="sticky top-0 z-20 flex h-14 items-center justify-center bg-brand-500 text-white">
       <div className="absolute left-3 text-xl" onClick={() => window.history.back()}>‹</div>
       <div className="text-lg font-semibold">{t}</div>
-      <div className="absolute right-3">⋯</div>
+      <div className="absolute right-3 text-[10px] opacity-80">v1.1.2</div>
     </div>
   )
 }
@@ -152,7 +152,7 @@ export default function AppShell() {
       <DesktopNav />
       <main className="flex-1">
         <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-white/80 px-4 py-3 backdrop-blur">
-          <div className="text-base font-semibold text-gray-800">洗濯派工系統</div>
+          <div className="text-base font-semibold text-gray-800">洗濯派工系統 <span className="ml-2 rounded bg-gray-100 px-2 py-0.5 text-[10px]">v1.1.2</span></div>
           <button onClick={()=>{ authRepo.logout().then(()=>{ window.location.href='/login' }) }} className="rounded bg-gray-100 px-3 py-1 text-sm text-gray-700">登出</button>
         </div>
         <div className="px-4 py-4">

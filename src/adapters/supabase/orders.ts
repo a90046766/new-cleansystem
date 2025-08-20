@@ -134,8 +134,36 @@ class SupabaseOrderRepo implements OrderRepo {
   }
 
   async finishWork(id: string, at: string): Promise<void> {
+    // 先讀訂單以便計算積分與扣庫
+    const one = await this.get(id)
     const { error } = await supabase.from('orders').update({ status: 'completed', work_completed_at: at, service_finished_at: at, updated_at: new Date().toISOString() }).eq('id', id)
     if (error) throw error
+    try {
+      if (one) {
+        const sum = (one.serviceItems || []).reduce((s, it: any) => s + (it.unitPrice || 0) * (it.quantity || 0), 0)
+        const net = Math.max(0, sum - (one.pointsDeductAmount || 0))
+        // 會員加點（100 元 = 1 點）
+        if (one.memberId) {
+          const { data: m, error: me } = await supabase.from('members').select('*').eq('id', one.memberId).single()
+          if (!me && m) {
+            const pts = (m.points || 0) + Math.floor(net / 100)
+            await supabase.from('members').update({ points: pts, updated_at: new Date().toISOString() }).eq('id', one.memberId)
+          }
+        }
+        // 完工扣庫：優先 productId
+        if (Array.isArray(one.serviceItems)) {
+          for (const it of one.serviceItems) {
+            if (it.productId) {
+              const { data: inv } = await supabase.from('inventory').select('*').eq('product_id', it.productId).limit(1).maybeSingle()
+              if (inv) {
+                const qty = Math.max(0, (inv.quantity || 0) - (it.quantity || 0))
+                await supabase.from('inventory').update({ quantity: qty, updated_at: new Date().toISOString() }).eq('id', inv.id)
+              }
+            }
+          }
+        }
+      }
+    } catch {}
   }
 }
 

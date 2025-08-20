@@ -28,7 +28,7 @@ export default function PageOrderDetail() {
   useEffect(()=>{ (async()=>{ const a = await loadAdapters(); setRepos(a) })() },[])
   useEffect(() => { if (!repos || !id) return; repos.orderRepo.get(id).then(setOrder) }, [id, repos])
   useEffect(() => { if (order) setItemsDraft(order.serviceItems || []) }, [order])
-  useEffect(()=>{ (async()=>{ try { if (order?.memberId) { const { memberRepo } = await import('../../adapters/local/members'); const m = await memberRepo.get(order.memberId); setMemberCode(m?.code||''); setMemberName(m?.name||'') } else { setMemberCode(''); setMemberName('') } } catch {} })() },[order?.memberId])
+  useEffect(()=>{ (async()=>{ try { if (!repos) return; if (order?.memberId) { const m = await repos.memberRepo.get(order.memberId); setMemberCode(m?.code||''); setMemberName(m?.name||'') } else { setMemberCode(''); setMemberName('') } } catch {} })() },[order?.memberId, repos])
   useEffect(()=>{
     if (!order) return
     const toLocal = (iso:string) => {
@@ -236,7 +236,7 @@ export default function PageOrderDetail() {
                   const code = (memberCode||'').trim().toUpperCase()
                   if (!code) { await repos.orderRepo.update(order.id, { memberId: undefined }); const o=await repos.orderRepo.get(order.id); setOrder(o); alert('已取消綁定') ;return }
                   if (!code.startsWith('MO')) { alert('請輸入有效的會員編號（MOxxxx）'); return }
-                  try { const { memberRepo } = await import('../../adapters/local/members'); const m = await memberRepo.findByCode(code); if (!m) { alert('查無此會員編號'); return } await repos.orderRepo.update(order.id, { memberId: m.id }); const o=await repos.orderRepo.get(order.id); setOrder(o); alert('已綁定會員：'+(m.name||'') ) } catch { alert('綁定失敗') }
+                  try { if(!repos) return; const m = await repos.memberRepo.findByCode(code); if (!m) { alert('查無此會員編號'); return } await repos.orderRepo.update(order.id, { memberId: m.id }); const o=await repos.orderRepo.get(order.id); setOrder(o); alert('已綁定會員：'+(m.name||'') ) } catch { alert('綁定失敗') }
                 }}>儲存</button>
                 {memberCode && <button className="rounded bg-gray-100 px-2 py-1" onClick={()=>navigator.clipboard.writeText(memberCode)}>複製MO</button>}
               </span>

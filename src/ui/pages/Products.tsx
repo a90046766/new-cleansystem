@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { productRepo } from '../../adapters/local/products'
+import { loadAdapters } from '../../adapters'
 import { authRepo } from '../../adapters/local/auth'
 import { Navigate } from 'react-router-dom'
 
@@ -7,10 +7,12 @@ export default function ProductsPage() {
   const u = authRepo.getCurrentUser()
   if (u && u.role==='technician') return <Navigate to="/dispatch" replace />
   const [rows, setRows] = useState<any[]>([])
+  const [repos, setRepos] = useState<any>(null)
   const [edit, setEdit] = useState<any | null>(null)
   const [img, setImg] = useState<string | null>(null)
-  const load = async () => setRows(await productRepo.list())
-  useEffect(() => { load() }, [])
+  const load = async () => { if(!repos) return; setRows(await repos.productRepo.list()) }
+  useEffect(() => { (async()=>{ const a = await loadAdapters(); setRepos(a) })() }, [])
+  useEffect(() => { if(repos) load() }, [repos])
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -31,7 +33,7 @@ export default function ProductsPage() {
                 const { confirmTwice } = await import('../kit')
                 const ok = await confirmTwice('確認刪除該產品？','刪除後無法復原，仍要刪除？')
                 if(!ok) return
-                try { const { productRepo } = await import('../../adapters/local/products'); await productRepo.remove(p.id); load() } catch {}
+                try { if(!repos) return; await repos.productRepo.remove(p.id); load() } catch {}
               }} className="rounded-lg bg-rose-500 px-3 py-1 text-white">刪除</button>
             </div>
           </div>
@@ -69,7 +71,7 @@ export default function ProductsPage() {
                 alert('已建立對應庫存並綁定')
               }} className="rounded-lg bg-gray-200 px-3 py-1 text-sm">建立對應庫存</button>
               )}
-              <button onClick={async()=>{ const payload = { ...edit, imageUrls: img? [img] : (edit.imageUrls||[]) }; await productRepo.upsert(payload); setEdit(null); setImg(null); load() }} className="rounded-lg bg-brand-500 px-3 py-1 text-white">儲存</button>
+              <button onClick={async()=>{ if(!repos) return; const payload = { ...edit, imageUrls: img? [img] : (edit.imageUrls||[]) }; await repos.productRepo.upsert(payload); setEdit(null); setImg(null); load() }} className="rounded-lg bg-brand-500 px-3 py-1 text-white">儲存</button>
             </div>
           </div>
         </div>

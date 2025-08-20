@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
-import { memberRepo } from '../../adapters/local/members'
+import { loadAdapters } from '../../adapters'
 
 export default function MembersPage() {
   const [rows, setRows] = useState<any[]>([])
+  const [repos, setRepos] = useState<any>(null)
   const [edit, setEdit] = useState<any | null>(null)
-  const load = async () => setRows(await memberRepo.list())
-  useEffect(()=>{ load() },[])
+  const load = async () => { if(!repos) return; setRows(await repos.memberRepo.list()) }
+  useEffect(()=>{ (async()=>{ const a = await loadAdapters(); setRepos(a) })() },[])
+  useEffect(()=>{ if(repos) load() },[repos])
   return (
     <div className="space-y-3">
       <div className="text-lg font-semibold">會員管理</div>
@@ -35,7 +37,7 @@ export default function MembersPage() {
             </div>
             <div className="mt-3 flex justify-end gap-2">
               <button onClick={()=>setEdit(null)} className="rounded bg-gray-100 px-3 py-1">取消</button>
-              <button onClick={async()=>{ await memberRepo.upsert(edit); setEdit(null); load() }} className="rounded bg-brand-500 px-3 py-1 text-white">儲存</button>
+              <button onClick={async()=>{ if(!repos) return; await repos.memberRepo.upsert(edit); setEdit(null); load() }} className="rounded bg-brand-500 px-3 py-1 text-white">儲存</button>
             </div>
           </div>
         </div>

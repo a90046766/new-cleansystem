@@ -7,7 +7,8 @@ function AppBar() {
     const title = { '/dispatch': '派工', '/me': '個人', '/notifications': '通知', '/schedule': '排班', '/customers': '客戶', '/payroll': '薪資', '/reports': '回報' };
     const loc = useLocation();
     const t = title[loc.pathname] || '訂單內容';
-    return (_jsxs("div", { className: "sticky top-0 z-20 flex h-14 items-center justify-center bg-brand-500 text-white", children: [_jsx("div", { className: "absolute left-3 text-xl", onClick: () => window.history.back(), children: "\u2039" }), _jsx("div", { className: "text-lg font-semibold", children: t }), _jsx("div", { className: "absolute right-3 text-[10px] opacity-80", children: "v1.1.2" })] }));
+    const u = authRepo.getCurrentUser();
+    return (_jsxs("div", { className: "sticky top-0 z-20 flex h-14 items-center justify-center bg-brand-500 text-white", children: [_jsx("div", { className: "absolute left-3 text-xl", onClick: () => window.history.back(), children: "\u2039" }), _jsx("div", { className: "text-lg font-semibold", children: t }), _jsx("div", { className: "absolute right-3 text-xs opacity-90", children: u?.name || '' })] }));
 }
 function TabBar() {
     const loc = useLocation();
@@ -22,7 +23,7 @@ function TabBar() {
             setUnreadCount(count);
         });
     }, [loc.pathname]);
-    return (_jsxs("div", { className: "sticky bottom-0 z-20 grid grid-cols-5 border-t bg-white py-2 text-center text-xs", children: [_jsx(Link, { to: "/dispatch", className: `${active('/dispatch')}`, children: "\u6D3E\u5DE5" }), _jsx(Link, { to: "/orders", className: `${active('/orders')}`, children: "\u8A02\u55AE" }), _jsx(Link, { to: "/schedule", className: `${active('/schedule')}`, children: "\u6392\u73ED" }), _jsxs(Link, { to: "/notifications", className: `relative ${active('/notifications')}`, children: ["\u901A\u77E5", unreadCount > 0 && (_jsx("span", { className: "absolute -right-3 -top-1 rounded-full bg-rose-500 px-1 text-[10px] text-white", children: unreadCount > 99 ? '99+' : unreadCount }))] }), _jsx(Link, { to: "/me", className: `${active('/me')}`, children: "\u500B\u4EBA" })] }));
+    return (_jsxs("div", { className: "sticky bottom-0 z-20 grid grid-cols-5 border-t bg-white py-2 text-center text-sm", children: [_jsx(Link, { to: "/dispatch", className: `${active('/dispatch')}`, children: "\u6D3E\u5DE5" }), _jsx(Link, { to: "/orders", className: `${active('/orders')}`, children: "\u8A02\u55AE" }), _jsx(Link, { to: "/schedule", className: `${active('/schedule')}`, children: "\u6392\u73ED" }), _jsxs(Link, { to: "/notifications", className: `relative ${active('/notifications')}`, children: ["\u901A\u77E5", unreadCount > 0 && (_jsx("span", { className: "absolute -right-3 -top-1 rounded-full bg-rose-500 px-1 text-[10px] text-white", children: unreadCount > 99 ? '99+' : unreadCount }))] }), _jsx(Link, { to: "/me", className: `${active('/me')}`, children: "\u500B\u4EBA" })] }));
 }
 function DesktopNav() {
     const loc = useLocation();
@@ -77,5 +78,5 @@ export default function AppShell() {
     if (user?.role === 'technician') {
         return (_jsxs("div", { className: "mx-auto min-h-screen bg-[#F5F7FB]", children: [_jsx(AppBar, {}), _jsx("div", { className: "px-3 pb-14 pt-3", children: _jsx(Outlet, {}) }), _jsx(TabBar, {})] }));
     }
-    return (_jsxs("div", { className: "flex min-h-screen bg-[#F5F7FB]", children: [_jsx(DesktopNav, {}), _jsxs("main", { className: "flex-1", children: [_jsxs("div", { className: "sticky top-0 z-10 flex items-center justify-between border-b bg-white/80 px-4 py-3 backdrop-blur", children: [_jsxs("div", { className: "text-base font-semibold text-gray-800", children: ["\u6D17\u6FEF\u6D3E\u5DE5\u7CFB\u7D71 ", _jsx("span", { className: "ml-2 rounded bg-gray-100 px-2 py-0.5 text-[10px]", children: "v1.1.2" })] }), _jsx("button", { onClick: () => { authRepo.logout().then(() => { window.location.href = '/login'; }); }, className: "rounded bg-gray-100 px-3 py-1 text-sm text-gray-700", children: "\u767B\u51FA" })] }), _jsx("div", { className: "px-4 py-4", children: _jsx(Outlet, {}) })] })] }));
+    return (_jsxs("div", { className: "flex min-h-screen bg-[#F5F7FB]", children: [_jsx(DesktopNav, {}), _jsxs("main", { className: "flex-1", children: [_jsxs("div", { className: "sticky top-0 z-10 flex items-center justify-between border-b bg-white/80 px-4 py-3 backdrop-blur", children: [_jsxs("div", { className: "text-base font-semibold text-gray-800", children: ["\u6D17\u6FEF\u6D3E\u5DE5\u7CFB\u7D71 ", _jsx("span", { className: "ml-2 rounded bg-gray-100 px-2 py-0.5 text-[10px]", children: "v1.1.2" })] }), _jsxs("div", { className: "flex items-center gap-3", children: [_jsx("div", { className: "text-sm text-gray-700", children: authRepo.getCurrentUser()?.name || '' }), _jsx("button", { onClick: () => { authRepo.logout().then(() => { window.location.href = '/login'; }); }, className: "rounded bg-gray-100 px-3 py-1 text-sm text-gray-700", children: "\u767B\u51FA" })] })] }), _jsx("div", { className: "px-4 py-4", children: _jsx(Outlet, {}) })] })] }));
 }

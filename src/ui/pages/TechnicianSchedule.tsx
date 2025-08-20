@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { scheduleRepo } from '../../adapters/local/schedule'
-import { technicianRepo } from '../../adapters/local/technicians'
+import { loadAdapters } from '../../adapters'
 import { Link, useSearchParams } from 'react-router-dom'
-import { orderRepo } from '../../adapters/local/orders'
 import { authRepo } from '../../adapters/local/auth'
 import Calendar from '../components/Calendar'
 import { overlaps } from '../../utils/time'
@@ -48,34 +46,38 @@ export default function TechnicianSchedulePage() {
   const [techLeaveType, setTechLeaveType] = useState<'排休' | '特休' | '事假' | '婚假' | '病假' | '喪假'>('排休')
   const [techLeaveEmail, setTechLeaveEmail] = useState('')
 
+  const [repos, setRepos] = useState<any>(null)
+  useEffect(()=>{ (async()=>{ const a = await loadAdapters(); setRepos(a) })() },[])
   useEffect(() => {
+    if(!repos) return
     const start = new Date()
     const end = new Date()
     end.setDate(end.getDate() + 30)
     const s = start.toISOString().slice(0, 10)
     const e = end.toISOString().slice(0, 10)
-    scheduleRepo.listTechnicianLeaves({ start: s, end: e }).then(rows=>{
+    repos.scheduleRepo.listTechnicianLeaves({ start: s, end: e }).then((rows:any[])=>{
       if (user?.role==='technician') {
-        const emailLc = (user.email||'').toLowerCase(); setLeaves(rows.filter(r => (r.technicianEmail||'').toLowerCase()===emailLc))
+        const emailLc = (user.email||'').toLowerCase(); setLeaves(rows.filter((r:any) => (r.technicianEmail||'').toLowerCase()===emailLc))
       } else {
         setLeaves(rows)
       }
     })
-    technicianRepo.list().then(rows=>{
-      if (user?.role==='technician') setTechs(rows.filter(t => (t.email||'').toLowerCase()===(user.email||'').toLowerCase()))
+    repos.technicianRepo.list().then((rows:any[])=>{
+      if (user?.role==='technician') setTechs(rows.filter((t:any) => (t.email||'').toLowerCase()===(user.email||'').toLowerCase()))
       else setTechs(rows)
     })
-  }, [])
+  }, [repos])
 
   // 依月份載入工單占用，並建立月曆徽章
   useEffect(() => {
     const yymm = date.slice(0, 7)
     const startMonth = `${yymm}-01`
     const endMonth = `${yymm}-31`
+    if(!repos) return
     Promise.all([
-      scheduleRepo.listWork({ start: startMonth, end: endMonth }),
-      scheduleRepo.listTechnicianLeaves({ start: startMonth, end: endMonth })
-    ]).then(([ws, ls]) => {
+      repos.scheduleRepo.listWork({ start: startMonth, end: endMonth }),
+      repos.scheduleRepo.listTechnicianLeaves({ start: startMonth, end: endMonth })
+    ]).then(([ws, ls]: any[]) => {
       setWorks(ws)
       const map: Record<string, number> = {}
       const overlapCount: Record<string, number> = {}
@@ -94,15 +96,16 @@ export default function TechnicianSchedulePage() {
       setEmphasisMarkers(emph)
       setDayTooltips(tips)
     })
-  }, [date, start, end])
+  }, [date, start, end, repos])
 
   useEffect(() => {
     // Admin 檢視全部；其他僅看自己
     if (!user) return
-    scheduleRepo.listSupport().then(rows => {
+    if(!repos) return
+    repos.scheduleRepo.listSupport().then((rows:any[]) => {
       if (user.role === 'admin') setSupportShifts(rows)
       else {
-        const mine = rows.filter(r => r.supportEmail && r.supportEmail.toLowerCase() === user.email.toLowerCase())
+        const mine = rows.filter((r:any) => r.supportEmail && r.supportEmail.toLowerCase() === user.email.toLowerCase())
         setSupportShifts(mine)
       }
     })
@@ -158,7 +161,8 @@ export default function TechnicianSchedulePage() {
     if (!orderId) return
     const chosen = assignable.filter(t => selected[t.id])
     const names = chosen.map(t => t.name)
-    await orderRepo.update(orderId, { assignedTechnicians: names, preferredDate: date, preferredTimeStart: start, preferredTimeEnd: end })
+    if(!repos) return
+    await repos.orderRepo.update(orderId, { assignedTechnicians: names, preferredDate: date, preferredTimeStart: start, preferredTimeEnd: end })
     alert('已指派，返回訂單選擇簽名技師')
     window.history.back()
   }
@@ -184,9 +188,10 @@ export default function TechnicianSchedulePage() {
             const mm = String(m + 1).padStart(2, '0')
             const startMonth = `${y}-${mm}-01`
             const endMonth = `${y}-${mm}-31`
+            if(!repos) return
             const [ws, ls] = await Promise.all([
-              scheduleRepo.listWork({ start: startMonth, end: endMonth }),
-              scheduleRepo.listTechnicianLeaves({ start: startMonth, end: endMonth })
+              repos.scheduleRepo.listWork({ start: startMonth, end: endMonth }),
+              repos.scheduleRepo.listTechnicianLeaves({ start: startMonth, end: endMonth })
             ])
             setWorks(ws)
             const map: Record<string, number> = {}
@@ -204,7 +209,7 @@ export default function TechnicianSchedulePage() {
         />
       ) : (
         <div className="rounded-2xl bg-white p-3 shadow-card">
-          <div className="grid grid-cols-7 gap-1 text-center text-xs text-gray-500">
+          <div className="grid grid-cols-7 gap-1 text-center text-sm text-gray-700">
             {(() => {
               const base = new Date(date)
               const day = base.getUTCDay() || 7
@@ -361,9 +366,10 @@ export default function TechnicianSchedulePage() {
               <button onClick={async () => {
                 if (!user) return
                 const color = (type: string) => type==='排休'||type==='特休'? '#FEF3C7' : type==='事假'? '#DBEAFE' : type==='婚假'? '#FCE7F3' : type==='病假'? '#E5E7EB' : '#9CA3AF'
-                await scheduleRepo.saveSupportShift({ supportEmail: user.email, date: supportDate, slot: supportSlot, reason: supportType, color: color(supportType) })
-                const rows = await scheduleRepo.listSupport()
-                setSupportShifts(rows.filter(r => r.supportEmail && r.supportEmail.toLowerCase() === user.email.toLowerCase()))
+                if(!repos) return
+                await repos.scheduleRepo.saveSupportShift({ supportEmail: user.email, date: supportDate, slot: supportSlot, reason: supportType, color: color(supportType) })
+                const rows = await repos.scheduleRepo.listSupport()
+                setSupportShifts(rows.filter((r:any) => r.supportEmail && r.supportEmail.toLowerCase() === user.email.toLowerCase()))
               }} className="rounded-xl bg-brand-500 px-4 py-2 text-white">新增</button>
             </div>
             <div className="space-y-2">
@@ -428,11 +434,12 @@ export default function TechnicianSchedulePage() {
                 if(techLeaveSlot==='am'){ payload.fullDay=false; payload.startTime='09:00'; payload.endTime='12:00' }
                 if(techLeaveSlot==='pm'){ payload.fullDay=false; payload.startTime='13:00'; payload.endTime='18:00' }
                 try {
-                  await scheduleRepo.saveTechnicianLeave(payload)
+                  if(!repos) return
+                  await repos.scheduleRepo.saveTechnicianLeave(payload)
                   const yymm = techLeaveDate.slice(0,7)
                   await Promise.all([
-                    scheduleRepo.listTechnicianLeaves({ start: `${yymm}-01`, end: `${yymm}-31` }).then(setLeaves),
-                    scheduleRepo.listWork({ start: `${yymm}-01`, end: `${yymm}-31` }).then(ws=>{
+                    repos.scheduleRepo.listTechnicianLeaves({ start: `${yymm}-01`, end: `${yymm}-31` }).then(setLeaves),
+                    repos.scheduleRepo.listWork({ start: `${yymm}-01`, end: `${yymm}-31` }).then((ws:any[])=>{
                       setWorks(ws)
                       const map: Record<string, number> = {}; const overlapCount: Record<string, number> = {}
                       for (const w of ws) { map[w.date]=(map[w.date]||0)+1; if (overlaps(w.startTime, w.endTime, start, end)) overlapCount[w.date]=(overlapCount[w.date]||0)+1 }
@@ -463,7 +470,7 @@ export default function TechnicianSchedulePage() {
       {leaves.map((l) => (
         <div key={l.id} className="rounded-xl border bg-white p-4 shadow-card">
           <div className="text-sm text-gray-600">{l.date} {l.fullDay ? '全天' : `${l.startTime || ''} ~ ${l.endTime || ''}`}</div>
-          <div className="mt-1 text-base">{l.technicianEmail}</div>
+          <div className="mt-1 text-base">{emailToTech[(l.technicianEmail||'').toLowerCase()]?.name || l.technicianEmail}</div>
           {l.reason && <div className="text-sm text-gray-500">{l.reason}</div>}
         </div>
       ))}

@@ -56,7 +56,6 @@ export default function LoginPage() {
       <form onSubmit={handleSubmit} className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-card">
         <div className="mb-6 text-center">
           <h1 className="text-2xl font-bold text-gray-900">洗濯派工系統</h1>
-          <p className="mt-1 text-sm text-gray-500">本機重構版</p>
         </div>
 
         {error && (

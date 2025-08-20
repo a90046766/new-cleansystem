@@ -50,7 +50,7 @@ class LocalNotificationRepo {
         return [
             {
                 id: 'NTF-WELCOME',
-                title: '歡迎使用洗濯派工系統（本機重構）',
+                title: '歡迎使用洗濯派工系統',
                 body: '這裡會顯示站內通知與未讀徽章。',
                 level: 'info',
                 target: 'all',

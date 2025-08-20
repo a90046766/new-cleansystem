@@ -7,11 +7,12 @@ function AppBar() {
   const title = { '/dispatch': '派工', '/me': '個人', '/notifications': '通知', '/schedule': '排班', '/customers': '客戶', '/payroll': '薪資', '/reports': '回報' } as Record<string,string>
   const loc = useLocation()
   const t = title[loc.pathname] || '訂單內容'
+  const u = authRepo.getCurrentUser()
   return (
     <div className="sticky top-0 z-20 flex h-14 items-center justify-center bg-brand-500 text-white">
       <div className="absolute left-3 text-xl" onClick={() => window.history.back()}>‹</div>
       <div className="text-lg font-semibold">{t}</div>
-      <div className="absolute right-3 text-[10px] opacity-80">v1.1.2</div>
+      <div className="absolute right-3 text-xs opacity-90">{u?.name || ''}</div>
     </div>
   )
 }
@@ -30,7 +31,7 @@ function TabBar() {
     })
   }, [loc.pathname])
   return (
-    <div className="sticky bottom-0 z-20 grid grid-cols-5 border-t bg-white py-2 text-center text-xs">
+    <div className="sticky bottom-0 z-20 grid grid-cols-5 border-t bg-white py-2 text-center text-sm">
       <Link to="/dispatch" className={`${active('/dispatch')}`}>派工</Link>
       <Link to="/orders" className={`${active('/orders')}`}>訂單</Link>
       <Link to="/schedule" className={`${active('/schedule')}`}>排班</Link>
@@ -153,7 +154,10 @@ export default function AppShell() {
       <main className="flex-1">
         <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-white/80 px-4 py-3 backdrop-blur">
           <div className="text-base font-semibold text-gray-800">洗濯派工系統 <span className="ml-2 rounded bg-gray-100 px-2 py-0.5 text-[10px]">v1.1.2</span></div>
-          <button onClick={()=>{ authRepo.logout().then(()=>{ window.location.href='/login' }) }} className="rounded bg-gray-100 px-3 py-1 text-sm text-gray-700">登出</button>
+          <div className="flex items-center gap-3">
+            <div className="text-sm text-gray-700">{authRepo.getCurrentUser()?.name || ''}</div>
+            <button onClick={()=>{ authRepo.logout().then(()=>{ window.location.href='/login' }) }} className="rounded bg-gray-100 px-3 py-1 text-sm text-gray-700">登出</button>
+          </div>
         </div>
         <div className="px-4 py-4">
           <Outlet />

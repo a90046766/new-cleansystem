@@ -1,9 +1,7 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useEffect, useMemo, useState } from 'react';
-import { scheduleRepo } from '../../adapters/local/schedule';
-import { technicianRepo } from '../../adapters/local/technicians';
+import { loadAdapters } from '../../adapters';
 import { Link, useSearchParams } from 'react-router-dom';
-import { orderRepo } from '../../adapters/local/orders';
 import { authRepo } from '../../adapters/local/auth';
 import Calendar from '../components/Calendar';
 import { overlaps } from '../../utils/time';
@@ -47,36 +45,42 @@ export default function TechnicianSchedulePage() {
     const [techLeaveSlot, setTechLeaveSlot] = useState('am');
     const [techLeaveType, setTechLeaveType] = useState('排休');
     const [techLeaveEmail, setTechLeaveEmail] = useState('');
+    const [repos, setRepos] = useState(null);
+    useEffect(() => { (async () => { const a = await loadAdapters(); setRepos(a); })(); }, []);
     useEffect(() => {
+        if (!repos)
+            return;
         const start = new Date();
         const end = new Date();
         end.setDate(end.getDate() + 30);
         const s = start.toISOString().slice(0, 10);
         const e = end.toISOString().slice(0, 10);
-        scheduleRepo.listTechnicianLeaves({ start: s, end: e }).then(rows => {
+        repos.scheduleRepo.listTechnicianLeaves({ start: s, end: e }).then((rows) => {
             if (user?.role === 'technician') {
                 const emailLc = (user.email || '').toLowerCase();
-                setLeaves(rows.filter(r => (r.technicianEmail || '').toLowerCase() === emailLc));
+                setLeaves(rows.filter((r) => (r.technicianEmail || '').toLowerCase() === emailLc));
             }
             else {
                 setLeaves(rows);
             }
         });
-        technicianRepo.list().then(rows => {
+        repos.technicianRepo.list().then((rows) => {
             if (user?.role === 'technician')
-                setTechs(rows.filter(t => (t.email || '').toLowerCase() === (user.email || '').toLowerCase()));
+                setTechs(rows.filter((t) => (t.email || '').toLowerCase() === (user.email || '').toLowerCase()));
             else
                 setTechs(rows);
         });
-    }, []);
+    }, [repos]);
     // 依月份載入工單占用，並建立月曆徽章
     useEffect(() => {
         const yymm = date.slice(0, 7);
         const startMonth = `${yymm}-01`;
         const endMonth = `${yymm}-31`;
+        if (!repos)
+            return;
         Promise.all([
-            scheduleRepo.listWork({ start: startMonth, end: endMonth }),
-            scheduleRepo.listTechnicianLeaves({ start: startMonth, end: endMonth })
+            repos.scheduleRepo.listWork({ start: startMonth, end: endMonth }),
+            repos.scheduleRepo.listTechnicianLeaves({ start: startMonth, end: endMonth })
         ]).then(([ws, ls]) => {
             setWorks(ws);
             const map = {};
@@ -98,16 +102,18 @@ export default function TechnicianSchedulePage() {
             setEmphasisMarkers(emph);
             setDayTooltips(tips);
         });
-    }, [date, start, end]);
+    }, [date, start, end, repos]);
     useEffect(() => {
         // Admin 檢視全部；其他僅看自己
         if (!user)
             return;
-        scheduleRepo.listSupport().then(rows => {
+        if (!repos)
+            return;
+        repos.scheduleRepo.listSupport().then((rows) => {
             if (user.role === 'admin')
                 setSupportShifts(rows);
             else {
-                const mine = rows.filter(r => r.supportEmail && r.supportEmail.toLowerCase() === user.email.toLowerCase());
+                const mine = rows.filter((r) => r.supportEmail && r.supportEmail.toLowerCase() === user.email.toLowerCase());
                 setSupportShifts(mine);
             }
         });
@@ -172,7 +178,9 @@ export default function TechnicianSchedulePage() {
             return;
         const chosen = assignable.filter(t => selected[t.id]);
         const names = chosen.map(t => t.name);
-        await orderRepo.update(orderId, { assignedTechnicians: names, preferredDate: date, preferredTimeStart: start, preferredTimeEnd: end });
+        if (!repos)
+            return;
+        await repos.orderRepo.update(orderId, { assignedTechnicians: names, preferredDate: date, preferredTimeStart: start, preferredTimeEnd: end });
         alert('已指派，返回訂單選擇簽名技師');
         window.history.back();
     };
@@ -180,9 +188,11 @@ export default function TechnicianSchedulePage() {
                     const mm = String(m + 1).padStart(2, '0');
                     const startMonth = `${y}-${mm}-01`;
                     const endMonth = `${y}-${mm}-31`;
+                    if (!repos)
+                        return;
                     const [ws, ls] = await Promise.all([
-                        scheduleRepo.listWork({ start: startMonth, end: endMonth }),
-                        scheduleRepo.listTechnicianLeaves({ start: startMonth, end: endMonth })
+                        repos.scheduleRepo.listWork({ start: startMonth, end: endMonth }),
+                        repos.scheduleRepo.listTechnicianLeaves({ start: startMonth, end: endMonth })
                     ]);
                     setWorks(ws);
                     const map = {};
@@ -203,7 +213,7 @@ export default function TechnicianSchedulePage() {
                     setWorkMarkers(map);
                     setEmphasisMarkers(emph);
                     setDayTooltips(tips);
-                } })) : (_jsx("div", { className: "rounded-2xl bg-white p-3 shadow-card", children: _jsx("div", { className: "grid grid-cols-7 gap-1 text-center text-xs text-gray-500", children: (() => {
+                } })) : (_jsx("div", { className: "rounded-2xl bg-white p-3 shadow-card", children: _jsx("div", { className: "grid grid-cols-7 gap-1 text-center text-sm text-gray-700", children: (() => {
                         const base = new Date(date);
                         const day = base.getUTCDay() || 7;
                         const monday = new Date(base);
@@ -236,9 +246,11 @@ export default function TechnicianSchedulePage() {
                                             if (!user)
                                                 return;
                                             const color = (type) => type === '排休' || type === '特休' ? '#FEF3C7' : type === '事假' ? '#DBEAFE' : type === '婚假' ? '#FCE7F3' : type === '病假' ? '#E5E7EB' : '#9CA3AF';
-                                            await scheduleRepo.saveSupportShift({ supportEmail: user.email, date: supportDate, slot: supportSlot, reason: supportType, color: color(supportType) });
-                                            const rows = await scheduleRepo.listSupport();
-                                            setSupportShifts(rows.filter(r => r.supportEmail && r.supportEmail.toLowerCase() === user.email.toLowerCase()));
+                                            if (!repos)
+                                                return;
+                                            await repos.scheduleRepo.saveSupportShift({ supportEmail: user.email, date: supportDate, slot: supportSlot, reason: supportType, color: color(supportType) });
+                                            const rows = await repos.scheduleRepo.listSupport();
+                                            setSupportShifts(rows.filter((r) => r.supportEmail && r.supportEmail.toLowerCase() === user.email.toLowerCase()));
                                         }, className: "rounded-xl bg-brand-500 px-4 py-2 text-white", children: "\u65B0\u589E" })] }), _jsxs("div", { className: "space-y-2", children: [supportShifts.filter(s => (s.date || '').startsWith(supportDate.slice(0, 7))).map(s => (_jsx("div", { className: "flex items-center justify-between rounded-xl border p-3 text-sm", children: _jsxs("div", { className: "flex items-center gap-3", children: [_jsx("span", { className: "inline-block h-3 w-3 rounded-full", style: { backgroundColor: s.color || '#E5E7EB' } }), _jsxs("div", { children: [s.date, " \u00B7 ", s.slot === 'full' ? '全天' : (s.slot === 'am' ? '上午' : '下午'), " \u00B7 ", s.reason] })] }) }, s.id))), supportShifts.length === 0 && _jsx("div", { className: "text-gray-500", children: "\u76EE\u524D\u7121\u6392\u73ED\u8CC7\u6599" })] })] }))] })), _jsxs("div", { className: "rounded-2xl bg-white p-4 shadow-card", children: [_jsxs("div", { className: "flex items-center justify-between", children: [_jsx("div", { className: "text-lg font-semibold", children: "\u6280\u5E2B\u4F11\u5047" }), _jsx("button", { onClick: () => setTechLeaveOpen(o => !o), className: "rounded-lg bg-gray-100 px-3 py-1 text-sm", children: techLeaveOpen ? '收起' : '展開' })] }), techLeaveOpen && (_jsxs("div", { className: "mt-3 space-y-3", children: [_jsxs("div", { className: "grid grid-cols-1 gap-3 md:grid-cols-3", children: [_jsxs("div", { children: [_jsx("label", { className: "mb-1 block text-sm text-gray-600", children: "\u9078\u64C7\u6280\u5E2B" }), _jsxs("select", { className: "w-full rounded-lg border px-2 py-1", value: techLeaveEmail, onChange: (e) => setTechLeaveEmail(e.target.value), children: [_jsx("option", { value: "", children: "\u8ACB\u9078\u64C7" }), techs.map(t => _jsxs("option", { value: t.email, children: [t.name, "\uFF08", t.code, "\uFF09"] }, t.id))] })] }), _jsx("div", { className: "md:col-span-2", children: _jsx(Calendar, { value: techLeaveDate, onChange: setTechLeaveDate, header: "\u9078\u64C7\u65E5\u671F" }) })] }), _jsxs("div", { className: "flex flex-wrap items-center gap-3 text-sm", children: [_jsxs("div", { children: [_jsx("label", { className: "mr-2 text-gray-600", children: "\u6642\u6BB5" }), _jsxs("select", { className: "rounded-lg border px-2 py-1", value: techLeaveSlot, onChange: (e) => setTechLeaveSlot(e.target.value), children: [_jsx("option", { value: "am", children: "\u4E0A\u5348" }), _jsx("option", { value: "pm", children: "\u4E0B\u5348" }), _jsx("option", { value: "full", children: "\u5168\u5929" })] })] }), _jsxs("div", { children: [_jsx("label", { className: "mr-2 text-gray-600", children: "\u5047\u5225" }), _jsxs("select", { className: "rounded-lg border px-2 py-1", value: techLeaveType, onChange: (e) => setTechLeaveType(e.target.value), children: [_jsx("option", { value: "\u6392\u4F11", children: "\u6392\u4F11" }), _jsx("option", { value: "\u7279\u4F11", children: "\u7279\u4F11" }), _jsx("option", { value: "\u4E8B\u5047", children: "\u4E8B\u5047" }), _jsx("option", { value: "\u5A5A\u5047", children: "\u5A5A\u5047" }), _jsx("option", { value: "\u75C5\u5047", children: "\u75C5\u5047" }), _jsx("option", { value: "\u55AA\u5047", children: "\u55AA\u5047" })] })] }), _jsx("button", { onClick: async () => {
                                             if (!techLeaveEmail) {
                                                 alert('請先選擇技師');
@@ -257,11 +269,13 @@ export default function TechnicianSchedulePage() {
                                                 payload.endTime = '18:00';
                                             }
                                             try {
-                                                await scheduleRepo.saveTechnicianLeave(payload);
+                                                if (!repos)
+                                                    return;
+                                                await repos.scheduleRepo.saveTechnicianLeave(payload);
                                                 const yymm = techLeaveDate.slice(0, 7);
                                                 await Promise.all([
-                                                    scheduleRepo.listTechnicianLeaves({ start: `${yymm}-01`, end: `${yymm}-31` }).then(setLeaves),
-                                                    scheduleRepo.listWork({ start: `${yymm}-01`, end: `${yymm}-31` }).then(ws => {
+                                                    repos.scheduleRepo.listTechnicianLeaves({ start: `${yymm}-01`, end: `${yymm}-31` }).then(setLeaves),
+                                                    repos.scheduleRepo.listWork({ start: `${yymm}-01`, end: `${yymm}-31` }).then((ws) => {
                                                         setWorks(ws);
                                                         const map = {};
                                                         const overlapCount = {};
@@ -281,5 +295,5 @@ export default function TechnicianSchedulePage() {
                                             catch (e) {
                                                 alert(e?.message || '新增失敗');
                                             }
-                                        }, className: "rounded-xl bg-brand-500 px-4 py-2 text-white", children: "\u65B0\u589E" })] })] }))] }), _jsx("div", { className: "text-lg font-semibold", children: "\u6280\u5E2B\u6392\u73ED\uFF08\u4F11\u5047\uFF09" }), _jsxs("div", { className: "rounded-2xl bg-white p-3 text-xs text-gray-600 shadow-card", children: [_jsx("div", { className: "mb-2 font-semibold", children: "\u5716\u4F8B" }), _jsxs("div", { className: "flex flex-wrap gap-2", children: [_jsxs("span", { className: "inline-flex items-center gap-1", children: [_jsx("i", { className: "h-3 w-3 rounded", style: { background: '#FEF3C7' } }), "\u6392\u4F11/\u7279\u4F11"] }), _jsxs("span", { className: "inline-flex items-center gap-1", children: [_jsx("i", { className: "h-3 w-3 rounded", style: { background: '#DBEAFE' } }), "\u4E8B\u5047"] }), _jsxs("span", { className: "inline-flex items-center gap-1", children: [_jsx("i", { className: "h-3 w-3 rounded", style: { background: '#FCE7F3' } }), "\u5A5A\u5047"] }), _jsxs("span", { className: "inline-flex items-center gap-1", children: [_jsx("i", { className: "h-3 w-3 rounded", style: { background: '#E5E7EB' } }), "\u75C5\u5047"] }), _jsxs("span", { className: "inline-flex items-center gap-1", children: [_jsx("i", { className: "h-3 w-3 rounded", style: { background: '#9CA3AF' } }), "\u55AA\u5047"] })] })] }), leaves.map((l) => (_jsxs("div", { className: "rounded-xl border bg-white p-4 shadow-card", children: [_jsxs("div", { className: "text-sm text-gray-600", children: [l.date, " ", l.fullDay ? '全天' : `${l.startTime || ''} ~ ${l.endTime || ''}`] }), _jsx("div", { className: "mt-1 text-base", children: l.technicianEmail }), l.reason && _jsx("div", { className: "text-sm text-gray-500", children: l.reason })] }, l.id))), leaves.length === 0 && _jsx("div", { className: "text-gray-500", children: "\u8FD1\u671F\u7121\u8CC7\u6599" }), _jsx("div", { className: "pt-2", children: _jsx(Link, { to: `/orders/${orderId || 'O01958'}`, className: "inline-block rounded-xl bg-gray-900 px-4 py-2 text-white", children: "\u8FD4\u56DE\u8A02\u55AE" }) })] }));
+                                        }, className: "rounded-xl bg-brand-500 px-4 py-2 text-white", children: "\u65B0\u589E" })] })] }))] }), _jsx("div", { className: "text-lg font-semibold", children: "\u6280\u5E2B\u6392\u73ED\uFF08\u4F11\u5047\uFF09" }), _jsxs("div", { className: "rounded-2xl bg-white p-3 text-xs text-gray-600 shadow-card", children: [_jsx("div", { className: "mb-2 font-semibold", children: "\u5716\u4F8B" }), _jsxs("div", { className: "flex flex-wrap gap-2", children: [_jsxs("span", { className: "inline-flex items-center gap-1", children: [_jsx("i", { className: "h-3 w-3 rounded", style: { background: '#FEF3C7' } }), "\u6392\u4F11/\u7279\u4F11"] }), _jsxs("span", { className: "inline-flex items-center gap-1", children: [_jsx("i", { className: "h-3 w-3 rounded", style: { background: '#DBEAFE' } }), "\u4E8B\u5047"] }), _jsxs("span", { className: "inline-flex items-center gap-1", children: [_jsx("i", { className: "h-3 w-3 rounded", style: { background: '#FCE7F3' } }), "\u5A5A\u5047"] }), _jsxs("span", { className: "inline-flex items-center gap-1", children: [_jsx("i", { className: "h-3 w-3 rounded", style: { background: '#E5E7EB' } }), "\u75C5\u5047"] }), _jsxs("span", { className: "inline-flex items-center gap-1", children: [_jsx("i", { className: "h-3 w-3 rounded", style: { background: '#9CA3AF' } }), "\u55AA\u5047"] })] })] }), leaves.map((l) => (_jsxs("div", { className: "rounded-xl border bg-white p-4 shadow-card", children: [_jsxs("div", { className: "text-sm text-gray-600", children: [l.date, " ", l.fullDay ? '全天' : `${l.startTime || ''} ~ ${l.endTime || ''}`] }), _jsx("div", { className: "mt-1 text-base", children: emailToTech[(l.technicianEmail || '').toLowerCase()]?.name || l.technicianEmail }), l.reason && _jsx("div", { className: "text-sm text-gray-500", children: l.reason })] }, l.id))), leaves.length === 0 && _jsx("div", { className: "text-gray-500", children: "\u8FD1\u671F\u7121\u8CC7\u6599" }), _jsx("div", { className: "pt-2", children: _jsx(Link, { to: `/orders/${orderId || 'O01958'}`, className: "inline-block rounded-xl bg-gray-900 px-4 py-2 text-white", children: "\u8FD4\u56DE\u8A02\u55AE" }) })] }));
 }

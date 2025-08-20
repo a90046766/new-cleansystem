@@ -1,0 +1,457 @@
+import { useEffect, useMemo, useState } from 'react'
+import { scheduleRepo } from '../../adapters/local/schedule'
+import { technicianRepo } from '../../adapters/local/technicians'
+import { Link, useSearchParams } from 'react-router-dom'
+import { orderRepo } from '../../adapters/local/orders'
+import { authRepo } from '../../adapters/local/auth'
+import Calendar from '../components/Calendar'
+import { overlaps } from '../../utils/time'
+
+export default function TechnicianSchedulePage() {
+  const [leaves, setLeaves] = useState<any[]>([])
+  const [techs, setTechs] = useState<any[]>([])
+  const [selected, setSelected] = useState<Record<string, boolean>>({})
+  const [works, setWorks] = useState<any[]>([])
+  const [searchParams] = useSearchParams()
+  const orderId = searchParams.get('orderId') || ''
+  const date = searchParams.get('date') || new Date().toISOString().slice(0,10)
+  const start = searchParams.get('start') || '09:00'
+  const end = searchParams.get('end') || '12:00'
+  const user = authRepo.getCurrentUser()
+  const [view, setView] = useState<'month' | 'week'>('month')
+  const [supportOpen, setSupportOpen] = useState(false)
+  const [supportDate, setSupportDate] = useState(date)
+  const [supportSlot, setSupportSlot] = useState<'am' | 'pm' | 'full'>('am')
+  const [supportType, setSupportType] = useState<'排休' | '特休' | '事假' | '婚假' | '病假' | '喪假'>('排休')
+  const [supportShifts, setSupportShifts] = useState<any[]>([])
+  const [workMarkers, setWorkMarkers] = useState<Record<string, number>>({})
+  const [emphasisMarkers, setEmphasisMarkers] = useState<Record<string, 'warn' | 'danger'>>({})
+  const [dayTooltips, setDayTooltips] = useState<Record<string, string>>({})
+  const [skillFilter, setSkillFilter] = useState<Record<string, boolean>>({})
+  const [skillMode, setSkillMode] = useState<'all'|'any'>('all')
+  const SKILLS: Array<[string,string]> = [
+    ['acStandard','分離式冷氣'],
+    ['washerStandard','直立洗衣機'],
+    ['acSpecial','特殊分離式'],
+    ['hoodStandard','一般抽油煙機'],
+    ['hoodHidden','隱藏抽油煙機'],
+    ['stainlessTank','不鏽鋼水塔'],
+    ['concreteTank','水泥水塔'],
+    ['concealedAC','吊隱式冷氣'],
+    ['concealedACSpecial','吊隱特殊'],
+    ['pipe','管路施工'],
+    ['washerDrum','滾筒洗衣機'],
+  ]
+  const [techLeaveOpen, setTechLeaveOpen] = useState(false)
+  const [techLeaveDate, setTechLeaveDate] = useState(date)
+  const [techLeaveSlot, setTechLeaveSlot] = useState<'am' | 'pm' | 'full'>('am')
+  const [techLeaveType, setTechLeaveType] = useState<'排休' | '特休' | '事假' | '婚假' | '病假' | '喪假'>('排休')
+  const [techLeaveEmail, setTechLeaveEmail] = useState('')
+
+  useEffect(() => {
+    const start = new Date()
+    const end = new Date()
+    end.setDate(end.getDate() + 30)
+    const s = start.toISOString().slice(0, 10)
+    const e = end.toISOString().slice(0, 10)
+    scheduleRepo.listTechnicianLeaves({ start: s, end: e }).then(rows=>{
+      if (user?.role==='technician') {
+        const emailLc = (user.email||'').toLowerCase(); setLeaves(rows.filter(r => (r.technicianEmail||'').toLowerCase()===emailLc))
+      } else {
+        setLeaves(rows)
+      }
+    })
+    technicianRepo.list().then(rows=>{
+      if (user?.role==='technician') setTechs(rows.filter(t => (t.email||'').toLowerCase()===(user.email||'').toLowerCase()))
+      else setTechs(rows)
+    })
+  }, [])
+
+  // 依月份載入工單占用，並建立月曆徽章
+  useEffect(() => {
+    const yymm = date.slice(0, 7)
+    const startMonth = `${yymm}-01`
+    const endMonth = `${yymm}-31`
+    Promise.all([
+      scheduleRepo.listWork({ start: startMonth, end: endMonth }),
+      scheduleRepo.listTechnicianLeaves({ start: startMonth, end: endMonth })
+    ]).then(([ws, ls]) => {
+      setWorks(ws)
+      const map: Record<string, number> = {}
+      const overlapCount: Record<string, number> = {}
+      const leaveCount: Record<string, number> = {}
+      for (const w of ws) {
+        map[w.date] = (map[w.date] || 0) + 1
+        if (overlaps(w.startTime, w.endTime, start, end)) overlapCount[w.date] = (overlapCount[w.date] || 0) + 1
+      }
+      for (const l of ls) leaveCount[l.date] = (leaveCount[l.date] || 0) + 1
+      const emph: Record<string, 'warn' | 'danger'> = {}
+      Object.keys(overlapCount).forEach(d => { const c = overlapCount[d]; emph[d] = c >= 5 ? 'danger' : 'warn' })
+      const tips: Record<string, string> = {}
+      const days = new Set([...Object.keys(map), ...Object.keys(leaveCount)])
+      days.forEach(d => { const w = map[d] || 0; const l = leaveCount[d] || 0; tips[d] = `工單 ${w}、請假 ${l}` })
+      setWorkMarkers(map)
+      setEmphasisMarkers(emph)
+      setDayTooltips(tips)
+    })
+  }, [date, start, end])
+
+  useEffect(() => {
+    // Admin 檢視全部；其他僅看自己
+    if (!user) return
+    scheduleRepo.listSupport().then(rows => {
+      if (user.role === 'admin') setSupportShifts(rows)
+      else {
+        const mine = rows.filter(r => r.supportEmail && r.supportEmail.toLowerCase() === user.email.toLowerCase())
+        setSupportShifts(mine)
+      }
+    })
+  }, [user, supportDate])
+
+  const assignable = useMemo(() => {
+    // 可用性：無請假且無工單重疊
+    const selectedKeys = Object.keys(skillFilter).filter(k => skillFilter[k])
+    return techs.filter(t => {
+      const emailLc = (t.email || '').toLowerCase()
+      const hasLeave = leaves.some(l => (l.technicianEmail || '').toLowerCase() === emailLc && l.date === date)
+      if (hasLeave) return false
+      const hasOverlap = works.some(w => ((w.technicianEmail || '').toLowerCase() === emailLc) && w.date === date && overlaps(w.startTime, w.endTime, start, end))
+      if (hasOverlap) return false
+      if (selectedKeys.length > 0) {
+        const skills = t.skills || {}
+        if (skillMode === 'all') {
+          for (const key of selectedKeys) if (!skills[key]) return false
+        } else {
+          let ok = false
+          for (const key of selectedKeys) if (skills[key]) { ok = true; break }
+          if (!ok) return false
+        }
+      }
+      return true
+    })
+  }, [techs, leaves, works, date, start, end, skillFilter, skillMode])
+
+  const unavailable = useMemo(() => {
+    return techs
+      .map(t => {
+        const emailLc = (t.email || '').toLowerCase()
+        const leave = leaves.find(l => (l.technicianEmail || '').toLowerCase() === emailLc && l.date === date)
+        if (leave) return { t, reason: '請假' }
+        const conflicts = works.filter(w => ((w.technicianEmail || '').toLowerCase() === emailLc) && w.date === date && overlaps(w.startTime, w.endTime, start, end))
+        if (conflicts.length > 0) {
+          const first = conflicts[0]
+          return { t, reason: `重疊 ${first.startTime}~${first.endTime}` }
+        }
+        return { t, reason: '' }
+      })
+      .filter(x => x.reason && !assignable.find(a => a.id === x.t.id))
+  }, [techs, leaves, works, date, start, end, assignable])
+
+  const toggleSelect = (id: string) => setSelected(s => ({ ...s, [id]: !s[id] }))
+  const emailToTech = useMemo(()=>{
+    const map: Record<string, any> = {}
+    for (const t of techs) map[(t.email||'').toLowerCase()] = t
+    return map
+  }, [techs])
+
+  const confirmAssign = async () => {
+    if (!orderId) return
+    const chosen = assignable.filter(t => selected[t.id])
+    const names = chosen.map(t => t.name)
+    await orderRepo.update(orderId, { assignedTechnicians: names, preferredDate: date, preferredTimeStart: start, preferredTimeEnd: end })
+    alert('已指派，返回訂單選擇簽名技師')
+    window.history.back()
+  }
+
+  return (
+    <div className="space-y-6">
+      {user?.role!=='technician' && (<div className="text-lg font-semibold">指派技師</div>)}
+      {user?.role!=='technician' && (<div className="flex items-center justify-between">
+        <div className="flex gap-2">
+          <button onClick={() => setView('month')} className={`rounded-lg px-2 py-1 text-sm ${view==='month'?'bg-brand-500 text-white':'bg-gray-100 text-gray-700'}`}>月</button>
+          <button onClick={() => setView('week')} className={`rounded-lg px-2 py-1 text-sm ${view==='week'?'bg-brand-500 text-white':'bg-gray-100 text-gray-700'}`}>週</button>
+        </div>
+        <div className="text-sm text-gray-500">{date} {start}~{end}</div>
+      </div>)}
+      {user?.role!=='technician' && (view==='month' ? (
+        <Calendar
+          value={date}
+          onChange={(d) => (window.location.search = `?orderId=${orderId}&date=${d}&start=${start}&end=${end}`)}
+          markers={workMarkers}
+          emphasis={emphasisMarkers}
+          tooltips={dayTooltips}
+          onMonthChange={async (y, m) => {
+            const mm = String(m + 1).padStart(2, '0')
+            const startMonth = `${y}-${mm}-01`
+            const endMonth = `${y}-${mm}-31`
+            const [ws, ls] = await Promise.all([
+              scheduleRepo.listWork({ start: startMonth, end: endMonth }),
+              scheduleRepo.listTechnicianLeaves({ start: startMonth, end: endMonth })
+            ])
+            setWorks(ws)
+            const map: Record<string, number> = {}
+            const overlapCount: Record<string, number> = {}
+            const leaveCount: Record<string, number> = {}
+            for (const w of ws) { map[w.date] = (map[w.date] || 0) + 1; if (overlaps(w.startTime, w.endTime, start, end)) overlapCount[w.date] = (overlapCount[w.date] || 0) + 1 }
+            for (const l of ls) leaveCount[l.date] = (leaveCount[l.date] || 0) + 1
+            const emph: Record<string, 'warn' | 'danger'> = {}
+            Object.keys(overlapCount).forEach(d => { const c = overlapCount[d]; emph[d] = c >= 5 ? 'danger' : 'warn' })
+            const tips: Record<string, string> = {}
+            const days = new Set([...Object.keys(map), ...Object.keys(leaveCount)])
+            days.forEach(d => { const w = map[d] || 0; const l = leaveCount[d] || 0; tips[d] = `工單 ${w}、請假 ${l}` })
+            setWorkMarkers(map); setEmphasisMarkers(emph); setDayTooltips(tips)
+          }}
+        />
+      ) : (
+        <div className="rounded-2xl bg-white p-3 shadow-card">
+          <div className="grid grid-cols-7 gap-1 text-center text-xs text-gray-500">
+            {(() => {
+              const base = new Date(date)
+              const day = base.getUTCDay() || 7
+              const monday = new Date(base)
+              monday.setUTCDate(base.getUTCDate() - day + 1)
+              const days = Array.from({ length: 7 }).map((_, i) => {
+                const d = new Date(monday)
+                d.setUTCDate(monday.getUTCDate() + i)
+                return d
+              })
+              return days.map((d, i) => {
+                const ds = d.toISOString().slice(0,10)
+                const isSel = ds === date
+                return (
+                  <button key={i} onClick={() => (window.location.search = `?orderId=${orderId}&date=${ds}&start=${start}&end=${end}`)} className={`h-8 rounded-md ${isSel? 'bg-brand-500 text-white' : 'bg-gray-100 text-gray-700'}`}>{String(d.getUTCDate())}</button>
+                )
+              })
+            })()}
+          </div>
+        </div>
+      ))}
+      {user?.role!=='technician' && (
+      <div className="rounded-2xl bg-white p-4 shadow-card">
+        <div className="text-sm text-gray-500">以下為未在該時段請假的可用技師。可依技能篩選；選擇多人後，回訂單頁指定簽名技師。</div>
+        <div className="mt-3 rounded-lg bg-gray-50 p-3 text-xs">
+          <div className="mb-2 font-semibold">技能篩選</div>
+          <div className="mb-2 flex items-center gap-3">
+            <label className="flex items-center gap-1"><input type="radio" name="mode" checked={skillMode==='all'} onChange={()=>setSkillMode('all')} />全部符合</label>
+            <label className="flex items-center gap-1"><input type="radio" name="mode" checked={skillMode==='any'} onChange={()=>setSkillMode('any')} />至少一項</label>
+          </div>
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+            {SKILLS.map(([key,label]) => (
+              <label key={key} className="flex items-center gap-2">
+                <input type="checkbox" checked={!!skillFilter[key]} onChange={e=>setSkillFilter(s=>({ ...s, [key]: e.target.checked }))} />
+                <span>{label}</span>
+              </label>
+            ))}
+          </div>
+          <div className="mt-2">
+            <button onClick={()=>setSkillFilter({})} className="rounded bg-gray-200 px-2 py-1">清除</button>
+          </div>
+        </div>
+        <div className="mt-3 grid grid-cols-1 gap-2">
+          {assignable.map(t => {
+            const selectedKeys = Object.keys(skillFilter).filter(k => skillFilter[k])
+            return (
+              <label key={t.id} className={`flex flex-col gap-1 rounded-xl border p-3 ${selected[t.id] ? 'border-brand-400' : ''}`}>
+                <div className="flex items-center gap-3">
+                  <input type="checkbox" checked={!!selected[t.id]} onChange={() => toggleSelect(t.id)} />
+                  <div>
+                    <div className="font-semibold">{t.shortName || t.name}</div>
+                    <div className="text-xs text-gray-400">{t.code}</div>
+                    <div className="text-xs text-gray-500">{t.region === 'all' ? '全區' : `${t.region}區`} · {t.email}</div>
+                  </div>
+                </div>
+                {selectedKeys.length>0 && (
+                  <div className="ml-7 flex flex-wrap gap-1">
+                    {selectedKeys.map(key=>{
+                      const has = (t.skills||{})[key]
+                      const label = (SKILLS.find(s=>s[0]===key)?.[1]) || key
+                      return <span key={key} className={`rounded-full px-2 py-0.5 text-[10px] ${has? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{label}{has?'✓':'×'}</span>
+                    })}
+                  </div>
+                )}
+              </label>
+            )
+          })}
+        </div>
+        {unavailable.length>0 && (
+          <div className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-700">
+            <div className="mb-1 font-semibold">不可指派（重疊/請假）</div>
+            <div className="space-y-1">
+              {unavailable.map(({t, reason}) => (
+                <div key={t.id} className="flex items-center justify-between border-b border-amber-100 pb-1">
+                  <div className="truncate">{t.name} <span className="text-gray-400">{t.code}</span></div>
+                  <div>{reason}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="mt-3 rounded-lg bg-gray-50 p-3 text-xs text-gray-600">
+          <div className="mb-1 font-semibold">當日占用</div>
+          {works.filter(w=>w.date===date).map((w,i)=>{
+            const conflict = overlaps(w.startTime, w.endTime, start, end)
+            const t = emailToTech[(w.technicianEmail||'').toLowerCase()]
+            return (
+              <div key={i} className={`flex items-center justify-between border-b py-1 ${conflict? 'text-rose-600' : ''}`} title={conflict? '與選定時段重疊' : ''}>
+                <div className="truncate">{t ? `${t.shortName||t.name} (${t.code})` : w.technicianEmail} <span className="text-gray-400">#{w.orderId}</span></div>
+                <div>{w.startTime}~{w.endTime}</div>
+              </div>
+            )
+          })}
+          {works.filter(w=>w.date===date).length===0 && <div>無</div>}
+        </div>
+        <div className="mt-3 flex gap-2">
+          <button onClick={confirmAssign} className="rounded-xl bg-brand-500 px-4 py-2 text-white">確認指派</button>
+          <Link to={`/orders/${orderId || 'O01958'}`} className="rounded-xl bg-gray-900 px-4 py-2 text-white">返回訂單</Link>
+        </div>
+      </div>
+      )}
+
+      {user?.role!=='technician' && (
+      <div className="rounded-2xl bg-white p-4 shadow-card">
+        <div className="flex items-center justify-between">
+          <div className="text-lg font-semibold">客服排班</div>
+          <button onClick={() => setSupportOpen(o => !o)} className="rounded-lg bg-gray-100 px-3 py-1 text-sm">{supportOpen ? '收起' : '展開'}</button>
+        </div>
+        {supportOpen && (
+          <div className="mt-3 space-y-3">
+            <Calendar value={supportDate} onChange={setSupportDate} header="選擇日期" />
+            <div className="flex items-center gap-3 text-sm">
+              <div>
+                <label className="mr-2 text-gray-600">時段</label>
+                <select className="rounded-lg border px-2 py-1" value={supportSlot} onChange={(e) => setSupportSlot(e.target.value as any)}>
+                  <option value="am">上午</option>
+                  <option value="pm">下午</option>
+                  <option value="full">全天</option>
+                </select>
+              </div>
+              <div>
+                <label className="mr-2 text-gray-600">假別</label>
+                <select className="rounded-lg border px-2 py-1" value={supportType} onChange={(e) => setSupportType(e.target.value as any)}>
+                  <option value="排休">排休</option>
+                  <option value="特休">特休</option>
+                  <option value="事假">事假</option>
+                  <option value="婚假">婚假</option>
+                  <option value="病假">病假</option>
+                  <option value="喪假">喪假</option>
+                </select>
+              </div>
+              <button onClick={async () => {
+                if (!user) return
+                const color = (type: string) => type==='排休'||type==='特休'? '#FEF3C7' : type==='事假'? '#DBEAFE' : type==='婚假'? '#FCE7F3' : type==='病假'? '#E5E7EB' : '#9CA3AF'
+                await scheduleRepo.saveSupportShift({ supportEmail: user.email, date: supportDate, slot: supportSlot, reason: supportType, color: color(supportType) })
+                const rows = await scheduleRepo.listSupport()
+                setSupportShifts(rows.filter(r => r.supportEmail && r.supportEmail.toLowerCase() === user.email.toLowerCase()))
+              }} className="rounded-xl bg-brand-500 px-4 py-2 text-white">新增</button>
+            </div>
+            <div className="space-y-2">
+              {supportShifts.filter(s => (s.date || '').startsWith(supportDate.slice(0,7))).map(s => (
+                <div key={s.id} className="flex items-center justify-between rounded-xl border p-3 text-sm">
+                  <div className="flex items-center gap-3">
+                    <span className="inline-block h-3 w-3 rounded-full" style={{ backgroundColor: s.color || '#E5E7EB' }} />
+                    <div>{s.date} · {s.slot === 'full' ? '全天' : (s.slot === 'am' ? '上午' : '下午')} · {s.reason}</div>
+                  </div>
+                </div>
+              ))}
+              {supportShifts.length === 0 && <div className="text-gray-500">目前無排班資料</div>}
+            </div>
+          </div>
+        )}
+      </div>
+      )}
+
+      <div className="rounded-2xl bg-white p-4 shadow-card">
+        <div className="flex items-center justify-between">
+          <div className="text-lg font-semibold">技師休假</div>
+          <button onClick={() => setTechLeaveOpen(o => !o)} className="rounded-lg bg-gray-100 px-3 py-1 text-sm">{techLeaveOpen ? '收起' : '展開'}</button>
+        </div>
+        {techLeaveOpen && (
+          <div className="mt-3 space-y-3">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              <div>
+                <label className="mb-1 block text-sm text-gray-600">選擇技師</label>
+                <select className="w-full rounded-lg border px-2 py-1" value={techLeaveEmail} onChange={(e)=>setTechLeaveEmail(e.target.value)}>
+                  <option value="">請選擇</option>
+                  {techs.map(t => <option key={t.id} value={t.email}>{t.name}（{t.code}）</option>)}
+                </select>
+              </div>
+              <div className="md:col-span-2">
+                <Calendar value={techLeaveDate} onChange={setTechLeaveDate} header="選擇日期" />
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 text-sm">
+              <div>
+                <label className="mr-2 text-gray-600">時段</label>
+                <select className="rounded-lg border px-2 py-1" value={techLeaveSlot} onChange={(e)=>setTechLeaveSlot(e.target.value as any)}>
+                  <option value="am">上午</option>
+                  <option value="pm">下午</option>
+                  <option value="full">全天</option>
+                </select>
+              </div>
+              <div>
+                <label className="mr-2 text-gray-600">假別</label>
+                <select className="rounded-lg border px-2 py-1" value={techLeaveType} onChange={(e)=>setTechLeaveType(e.target.value as any)}>
+                  <option value="排休">排休</option>
+                  <option value="特休">特休</option>
+                  <option value="事假">事假</option>
+                  <option value="婚假">婚假</option>
+                  <option value="病假">病假</option>
+                  <option value="喪假">喪假</option>
+                </select>
+              </div>
+              <button onClick={async()=>{
+                if(!techLeaveEmail){ alert('請先選擇技師'); return }
+                const color = (type: string) => type==='排休'||type==='特休'? '#FEF3C7' : type==='事假'? '#DBEAFE' : type==='婚假'? '#FCE7F3' : type==='病假'? '#E5E7EB' : '#9CA3AF'
+                const payload: any = { technicianEmail: techLeaveEmail, date: techLeaveDate, fullDay: techLeaveSlot==='full', reason: techLeaveType, color: color(techLeaveType) }
+                if(techLeaveSlot==='am'){ payload.fullDay=false; payload.startTime='09:00'; payload.endTime='12:00' }
+                if(techLeaveSlot==='pm'){ payload.fullDay=false; payload.startTime='13:00'; payload.endTime='18:00' }
+                try {
+                  await scheduleRepo.saveTechnicianLeave(payload)
+                  const yymm = techLeaveDate.slice(0,7)
+                  await Promise.all([
+                    scheduleRepo.listTechnicianLeaves({ start: `${yymm}-01`, end: `${yymm}-31` }).then(setLeaves),
+                    scheduleRepo.listWork({ start: `${yymm}-01`, end: `${yymm}-31` }).then(ws=>{
+                      setWorks(ws)
+                      const map: Record<string, number> = {}; const overlapCount: Record<string, number> = {}
+                      for (const w of ws) { map[w.date]=(map[w.date]||0)+1; if (overlaps(w.startTime, w.endTime, start, end)) overlapCount[w.date]=(overlapCount[w.date]||0)+1 }
+                      const emph: Record<string, 'warn'|'danger'> = {}
+                      Object.keys(overlapCount).forEach(d=>{ const c=overlapCount[d]; emph[d]= c>=5?'danger':'warn' })
+                      setWorkMarkers(map); setEmphasisMarkers(emph)
+                    })
+                  ])
+                  alert('已新增休假')
+                } catch(e:any){ alert(e?.message||'新增失敗') }
+              }} className="rounded-xl bg-brand-500 px-4 py-2 text-white">新增</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="text-lg font-semibold">技師排班（休假）</div>
+      <div className="rounded-2xl bg-white p-3 text-xs text-gray-600 shadow-card">
+        <div className="mb-2 font-semibold">圖例</div>
+        <div className="flex flex-wrap gap-2">
+          <span className="inline-flex items-center gap-1"><i className="h-3 w-3 rounded" style={{background:'#FEF3C7'}}/>排休/特休</span>
+          <span className="inline-flex items-center gap-1"><i className="h-3 w-3 rounded" style={{background:'#DBEAFE'}}/>事假</span>
+          <span className="inline-flex items-center gap-1"><i className="h-3 w-3 rounded" style={{background:'#FCE7F3'}}/>婚假</span>
+          <span className="inline-flex items-center gap-1"><i className="h-3 w-3 rounded" style={{background:'#E5E7EB'}}/>病假</span>
+          <span className="inline-flex items-center gap-1"><i className="h-3 w-3 rounded" style={{background:'#9CA3AF'}}/>喪假</span>
+        </div>
+      </div>
+      {leaves.map((l) => (
+        <div key={l.id} className="rounded-xl border bg-white p-4 shadow-card">
+          <div className="text-sm text-gray-600">{l.date} {l.fullDay ? '全天' : `${l.startTime || ''} ~ ${l.endTime || ''}`}</div>
+          <div className="mt-1 text-base">{l.technicianEmail}</div>
+          {l.reason && <div className="text-sm text-gray-500">{l.reason}</div>}
+        </div>
+      ))}
+      {leaves.length === 0 && <div className="text-gray-500">近期無資料</div>}
+
+      <div className="pt-2">
+        <Link to={`/orders/${orderId || 'O01958'}`} className="inline-block rounded-xl bg-gray-900 px-4 py-2 text-white">返回訂單</Link>
+      </div>
+    </div>
+  )
+}
+
+

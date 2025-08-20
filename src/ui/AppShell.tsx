@@ -45,6 +45,53 @@ function TabBar() {
   )
 }
 
+function DesktopNav() {
+  const loc = useLocation()
+  const active = (p: string) => (loc.pathname.startsWith(p) ? 'bg-brand-50 text-brand-700 ring-1 ring-brand-200' : 'text-gray-700 hover:bg-gray-50')
+  const [unreadCount, setUnreadCount] = useState(0)
+  useEffect(() => {
+    const user = authRepo.getCurrentUser()
+    if (!user) return
+    notificationRepo.listForUser(user).then(({ unreadIds }) => {
+      const count = Object.values(unreadIds).filter(Boolean).length
+      setUnreadCount(count)
+    })
+  }, [loc.pathname])
+  const Item = ({ to, label }: { to: string; label: string }) => (
+    <Link to={to} className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm ${active(to)}`}>
+      <span className="truncate">{label}</span>
+      {to==='/notifications' && unreadCount>0 && (
+        <span className="ml-2 rounded-full bg-rose-500 px-1.5 text-[10px] text-white">{unreadCount>99?'99+':unreadCount}</span>
+      )}
+    </Link>
+  )
+  return (
+    <aside className="w-56 shrink-0 border-r bg-white p-3">
+      <div className="mb-3 px-1 text-sm font-semibold text-gray-500">功能選單</div>
+      <nav className="space-y-1">
+        <Item to="/dispatch" label="派工總覽" />
+        <Item to="/orders" label="訂單管理" />
+        <Item to="/schedule" label="排班/派工" />
+        <Item to="/approvals" label="申請審核" />
+        <Item to="/customers" label="客戶管理" />
+        <Item to="/members" label="會員管理" />
+        <Item to="/technicians" label="技師管理" />
+        <Item to="/staff" label="員工管理" />
+        <Item to="/products" label="產品管理" />
+        <Item to="/inventory" label="庫存管理" />
+        <Item to="/promotions" label="活動管理" />
+        <Item to="/reservations" label="預約訂單" />
+        <Item to="/notifications" label="通知中心" />
+        <Item to="/reports" label="報表/回報" />
+        <Item to="/payroll" label="薪資/分潤" />
+        <Item to="/documents" label="文件管理" />
+        <Item to="/models" label="機型管理" />
+        <Item to="/me" label="個人設定" />
+      </nav>
+    </aside>
+  )
+}
+
 export default function AppShell() {
   const [blocked, setBlocked] = useState(false)
   useEffect(() => {
@@ -86,13 +133,31 @@ export default function AppShell() {
     )
   }
 
-  return (
-    <div className="mx-auto min-h-screen max-w-md bg-[#F5F7FB]">
-      <AppBar />
-      <div className="px-3 pb-4 pt-3">
-        <Outlet />
+  // 角色導向版型：技師保留行動版，其餘採用桌面左側選單
+  const user = authRepo.getCurrentUser()
+  if (user?.role === 'technician') {
+    return (
+      <div className="mx-auto min-h-screen bg-[#F5F7FB]">
+        <AppBar />
+        <div className="px-3 pb-14 pt-3">
+          <Outlet />
+        </div>
+        <TabBar />
       </div>
-      <TabBar />
+    )
+  }
+
+  return (
+    <div className="flex min-h-screen bg-[#F5F7FB]">
+      <DesktopNav />
+      <main className="flex-1">
+        <div className="sticky top-0 z-10 border-b bg-white/80 px-4 py-3 backdrop-blur">
+          <div className="text-base font-semibold text-gray-800">洗濯派工系統</div>
+        </div>
+        <div className="px-4 py-4">
+          <Outlet />
+        </div>
+      </main>
     </div>
   )
 }

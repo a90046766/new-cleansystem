@@ -1,4 +1,4 @@
-import { SectionTitle } from '../kit'
+import { Link } from 'react-router-dom'
 
 export default function PageDispatchHome() {
   return (
@@ -6,10 +6,10 @@ export default function PageDispatchHome() {
       <div>
         <div className="text-lg font-semibold">快速入口</div>
         <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-          <a href="/orders" className="rounded-xl border bg-white p-4 shadow-card">訂單管理</a>
-          <a href="/reservations" className="rounded-xl border bg-white p-4 shadow-card">預約訂單</a>
-          <a href="/schedule" className="rounded-xl border bg-white p-4 shadow-card">排班/派工</a>
-          <a href="/products" className="rounded-xl border bg-white p-4 shadow-card">產品管理</a>
+          <Link to="/orders" className="rounded-xl border bg-white p-4 shadow-card">訂單管理</Link>
+          <Link to="/reservations" className="rounded-xl border bg-white p-4 shadow-card">預約訂單</Link>
+          <Link to="/schedule" className="rounded-xl border bg-white p-4 shadow-card">排班/派工</Link>
+          <Link to="/products" className="rounded-xl border bg-white p-4 shadow-card">產品管理</Link>
         </div>
       </div>
     </div>

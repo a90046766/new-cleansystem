@@ -208,25 +208,7 @@ export default function PageOrderDetail() {
             </div>
           </div>
           <div className="text-xs text-gray-500">推薦碼：{order.referrerCode || '-'} {order.referrerCode && (<button className="ml-2 underline" onClick={()=>navigator.clipboard.writeText(order.referrerCode)}>複製</button>)}</div>
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <div>付款方式：
-              <select className="rounded border px-2 py-1" value={payMethod} onChange={async e=>{ setPayMethod(e.target.value as any); await repos.orderRepo.update(order.id, { paymentMethod: e.target.value as any }); const o=await repos.orderRepo.get(order.id); setOrder(o) }}>
-                <option value="">—</option>
-                <option value="cash">現金</option>
-                <option value="transfer">轉帳</option>
-                <option value="card">刷卡</option>
-                <option value="other">其他</option>
-              </select>
-            </div>
-            <div>付款狀態：
-              <select className="rounded border px-2 py-1" value={payStatus} onChange={async e=>{ setPayStatus(e.target.value as any); await repos.orderRepo.update(order.id, { paymentStatus: e.target.value as any }); const o=await repos.orderRepo.get(order.id); setOrder(o) }}>
-                <option value="">—</option>
-                <option value="unpaid">未付款</option>
-                <option value="partial">部分付款</option>
-                <option value="paid">已付款</option>
-              </select>
-            </div>
-          </div>
+          {/* 移除重複的付款方式/付款狀態；已在「服務內容」底部呈現 */}
           <div className="text-xs text-gray-700">
             會員：
             {can(user,'orders.update') ? (

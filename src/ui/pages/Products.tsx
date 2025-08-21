@@ -17,7 +17,22 @@ export default function ProductsPage() {
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <div className="text-lg font-semibold">產品管理</div>
-        <button onClick={()=>setEdit({ id:'', name:'', unitPrice:0, groupPrice:undefined, groupMinQty:0, description:'', imageUrls:[], safeStock:0 })} className="rounded-lg bg-brand-500 px-3 py-1 text-white">新增</button>
+        <div className="flex items-center gap-2">
+          <button onClick={()=>setEdit({ id:'', name:'', unitPrice:0, groupPrice:undefined, groupMinQty:0, description:'', imageUrls:[], safeStock:0 })} className="rounded-lg bg-brand-500 px-3 py-1 text-white">新增</button>
+          {rows.length===0 && (
+            <button onClick={async()=>{
+              if(!repos) return
+              try {
+                await repos.productRepo.upsert({ id:'', name:'分離式冷氣清洗', unitPrice:1800, groupPrice:1600, groupMinQty:2, description:'室內外機標準清洗，包含濾網、蒸發器、冷凝器清潔', imageUrls:[], safeStock:20 })
+                await repos.productRepo.upsert({ id:'', name:'洗衣機清洗（滾筒）', unitPrice:1999, groupPrice:1799, groupMinQty:2, description:'滾筒式洗衣機拆洗保養，包含內筒、外筒、管路清潔', imageUrls:[], safeStock:20 })
+                await repos.productRepo.upsert({ id:'', name:'倒T型抽油煙機清洗', unitPrice:2200, groupPrice:2000, groupMinQty:2, description:'不鏽鋼倒T型抽油煙機，包含內部機械清洗', imageUrls:[], safeStock:20 })
+                await repos.productRepo.upsert({ id:'', name:'傳統雙渦輪抽油煙機清洗', unitPrice:1800, groupPrice:1600, groupMinQty:2, description:'傳統型雙渦輪抽油煙機清洗保養', imageUrls:[], safeStock:20 })
+                await load()
+                alert('預設產品已建立')
+              } catch(e:any){ alert(e?.message||'建立失敗') }
+            }} className="rounded-lg bg-gray-900 px-3 py-1 text-white">建立預設產品</button>
+          )}
+        </div>
       </div>
       {rows.map(p => (
         <div key={p.id} className={`rounded-xl border p-4 shadow-card ${p.safeStock && p.safeStock>0 && (p.quantity||0) < p.safeStock ? 'border-amber-400' : ''}`}>
@@ -64,10 +79,10 @@ export default function ProductsPage() {
               <button onClick={()=>setEdit(null)} className="rounded-lg bg-gray-100 px-3 py-1">取消</button>
               {edit.id && (
               <button onClick={async()=>{
-                const { inventoryRepo } = await import('../../adapters/local/inventory')
+                if(!repos) return
                 const { confirmTwice } = await import('../kit')
                 if (!(await confirmTwice('建立對應庫存？','將建立數量為 0、並綁定此產品。是否繼續？'))) return
-                await inventoryRepo.upsert({ id: '', name: edit.name, productId: edit.id, quantity: 0, imageUrls: [], safeStock: edit.safeStock||0 })
+                await repos.inventoryRepo.upsert({ id: '', name: edit.name, productId: edit.id, quantity: 0, imageUrls: [], safeStock: edit.safeStock||0 })
                 alert('已建立對應庫存並綁定')
               }} className="rounded-lg bg-gray-200 px-3 py-1 text-sm">建立對應庫存</button>
               )}

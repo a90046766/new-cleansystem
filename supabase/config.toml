@@ -1,0 +1,5 @@
+[project]
+# 將此值留空；CLI 會透過 `supabase link --project-ref` 動態連結
+ref = ""
+
+

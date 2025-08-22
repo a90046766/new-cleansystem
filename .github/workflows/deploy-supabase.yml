@@ -11,6 +11,9 @@ on:
 jobs:
   db-deploy:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: supabase
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,7 +29,8 @@ jobs:
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
         run: |
-          supabase link --project-ref "$SUPABASE_PROJECT_ID"
+          set -euxo pipefail
+          supabase link --project-ref "$SUPABASE_PROJECT_ID" --password "$SUPABASE_DB_PASSWORD"
           supabase db push
 
 

@@ -33,12 +33,11 @@ import ReportsPage from './ui/pages/Reports'
 
 // 權限保護
 import { loadAdapters } from './adapters/index'
+import { authRepo as staticAuthRepo } from './adapters/local/auth'
 import { can } from './utils/permissions'
 
-let authRepo: any
-
 function PrivateRoute({ children, permission }: { children: React.ReactNode; permission?: string }) {
-  const user = authRepo?.getCurrentUser?.()
+  const user = staticAuthRepo?.getCurrentUser?.()
   
   if (!user) {
     return <Navigate to="/login" replace />
@@ -66,7 +65,6 @@ function PrivateRoute({ children, permission }: { children: React.ReactNode; per
 
 ;(async()=>{
   const a = await loadAdapters()
-  authRepo = a.authRepo
   createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
       <BrowserRouter>

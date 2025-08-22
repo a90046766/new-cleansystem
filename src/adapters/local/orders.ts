@@ -155,7 +155,12 @@ class LocalOrderRepo implements OrderRepo {
       // 會員：100 元 = 1 點
       if (order.memberId) {
         const m = await memberRepo.get(order.memberId)
-        if (m) await memberRepo.upsert({ ...m, points: (m.points || 0) + Math.floor(netAmount / 100) })
+        if (m) {
+          const used = Math.max(0, order.pointsUsed || 0)
+          const earned = Math.floor(netAmount / 100)
+          const nextPts = Math.max(0, (m.points || 0) - used + earned)
+          await memberRepo.upsert({ ...m, points: nextPts })
+        }
       }
       // 技師/業務介紹（每滿 300 元 +1）
       if (ref.startsWith('SR')) {

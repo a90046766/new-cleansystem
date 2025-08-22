@@ -85,6 +85,9 @@ public
 tmp/
 temp/
 
+# Shell transcripts accidentally added
+hell -NoProfile -ExecutionPolicy Bypass -Command npm run build
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -98,3 +101,8 @@ temp/
 
 # OS generated files
 Thumbs.db
+.webcapc/
+hell -NoProfile -ExecutionPolicy Bypass -Command npm run build
+hell -NoProfile -ExecutionPolicy Bypass -Command npm run build
+.webcapc/
+hell -NoProfile -ExecutionPolicy Bypass -Command npm run build

@@ -8,6 +8,8 @@ export interface CalendarProps {
   onMonthChange?: (year: number, monthIndex: number) => void
   emphasis?: Record<string, 'warn' | 'danger'>
   tooltips?: Record<string, string>
+  onDayHover?: (date: string) => void
+  onDayLeave?: (date: string) => void
 }
 
 function getDaysInMonth(year: number, monthIndex: number): Date[] {
@@ -25,7 +27,7 @@ function formatDate(d: Date): string {
   return d.toISOString().slice(0, 10)
 }
 
-export default function Calendar({ value, onChange, header, markers, onMonthChange, emphasis, tooltips }: CalendarProps) {
+export default function Calendar({ value, onChange, header, markers, onMonthChange, emphasis, tooltips, onDayHover, onDayLeave }: CalendarProps) {
   const selected = new Date(value || new Date().toISOString())
   const year = selected.getUTCFullYear()
   const month = selected.getUTCMonth()
@@ -67,6 +69,8 @@ export default function Calendar({ value, onChange, header, markers, onMonthChan
             <button
               key={ds}
               onClick={() => onChange(ds)}
+              onMouseEnter={() => onDayHover && onDayHover(ds)}
+              onMouseLeave={() => onDayLeave && onDayLeave(ds)}
               title={tooltips?.[ds] || (badge ? `當日占用 ${count}` : '')}
               className={`relative h-8 rounded-md text-sm ${active ? 'bg-brand-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'} ${badge && !active ? 'ring-1 ring-brand-300' : ''} ${!active ? emphRing : ''}`}
             >

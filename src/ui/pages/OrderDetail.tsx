@@ -230,7 +230,7 @@ export default function PageOrderDetail() {
             {user?.role!=='technician' && (
               <Link to={`/schedule?orderId=${order.id}&date=${order.preferredDate||''}&start=${order.preferredTimeStart}&end=${order.preferredTimeEnd}`} className="inline-block rounded-xl bg-brand-500 px-4 py-2 text-white">指派技師</Link>
             )}
-            {order.status==='draft' && can(user,'orders.update') && <button onClick={async()=>{ await repos.orderRepo.confirm(order.id); const o=await repos.orderRepo.get(order.id); setOrder(o); alert('已確認') }} className="ml-2 inline-block rounded-xl bg-blue-600 px-4 py-2 text-white">確認</button>}
+            {order.status==='draft' && can(user,'orders.update') && <button onClick={async()=>{ const { confirmTwice } = await import('../kit'); if (!(await confirmTwice('確認要將訂單狀態設為「已確認」？','已確認後僅能取消，無法刪除。是否繼續？'))) return; await repos.orderRepo.confirm(order.id); const o=await repos.orderRepo.get(order.id); setOrder(o); alert('已確認') }} className="ml-2 inline-block rounded-xl bg-blue-600 px-4 py-2 text白">確認</button>}
           </div>
           {Array.isArray(order.assignedTechnicians) && order.assignedTechnicians.length > 0 && (
             <div className="mt-2">
@@ -258,7 +258,7 @@ export default function PageOrderDetail() {
                     <option key={i} value={n}>{n}</option>
                   ))}
                 </select>
-                <button onClick={()=>setSignOpen(true)} className="ml-2 rounded bg-gray-900 px-3 py-1 text-white">簽名</button>
+                <button onClick={()=>{ if(!order.signatureTechnician){ alert('請先選擇簽名技師'); return } setSignOpen(true) }} className="ml-2 rounded bg-gray-900 px-3 py-1 text-white">簽名</button>
               </div>
             </div>
           )}

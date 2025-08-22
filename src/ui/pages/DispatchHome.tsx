@@ -12,6 +12,12 @@ export default function PageDispatchHome() {
           <Link to="/products" className="rounded-xl border bg-white p-4 shadow-card">產品管理</Link>
         </div>
       </div>
+      <div>
+        <div className="text-lg font-semibold">公告欄</div>
+        <div className="mt-3 rounded-2xl bg-white p-4 text-sm text-gray-600 shadow-card">
+          <div className="text-gray-500">目前無公告</div>
+        </div>
+      </div>
     </div>
   )
 }

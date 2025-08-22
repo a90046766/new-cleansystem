@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { loadAdapters } from '../../adapters'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { authRepo } from '../../adapters/local/auth'
 import Calendar from '../components/Calendar'
 import { overlaps } from '../../utils/time'
@@ -45,6 +45,10 @@ export default function TechnicianSchedulePage() {
   const [techLeaveSlot, setTechLeaveSlot] = useState<'am' | 'pm' | 'full'>('am')
   const [techLeaveType, setTechLeaveType] = useState<'排休' | '特休' | '事假' | '婚假' | '病假' | '喪假'>('排休')
   const [techLeaveEmail, setTechLeaveEmail] = useState('')
+
+  const navigate = useNavigate()
+  const [hoverDate, setHoverDate] = useState<string>('')
+  const [hoverOrders, setHoverOrders] = useState<Record<string, any>>({})
 
   const [repos, setRepos] = useState<any>(null)
   useEffect(()=>{ (async()=>{ const a = await loadAdapters(); setRepos(a) })() },[])
@@ -97,6 +101,20 @@ export default function TechnicianSchedulePage() {
       setDayTooltips(tips)
     })
   }, [date, start, end, repos])
+
+  // 當 hoverDate 變更時，補取當日工單細節（數量用）
+  useEffect(() => {
+    (async () => {
+      if (!repos || !hoverDate) return
+      const ids = Array.from(new Set(works.filter(w=>w.date===hoverDate).map(w=>w.orderId))).filter(Boolean)
+      const miss = ids.filter(id => !hoverOrders[id])
+      if (miss.length === 0) return
+      const pairs = await Promise.all(miss.map(async (id) => { try { const o = await repos.orderRepo.get(id); return [id, o] as const } catch { return [id, null] as const } }))
+      const next = { ...hoverOrders }
+      for (const [id, o] of pairs) if (o) next[id] = o
+      setHoverOrders(next)
+    })()
+  }, [hoverDate, works, repos])
 
   useEffect(() => {
     // Admin 檢視全部；其他僅看自己
@@ -180,7 +198,7 @@ export default function TechnicianSchedulePage() {
       {user?.role!=='technician' && (view==='month' ? (
         <Calendar
           value={date}
-          onChange={(d) => (window.location.search = `?orderId=${orderId}&date=${d}&start=${start}&end=${end}`)}
+          onChange={async (d) => { try { if (orderId && repos) { await repos.orderRepo.update(orderId, { preferredDate: d }); navigate(`/orders/${orderId}`) } else { navigate(`/schedule?date=${d}&start=${start}&end=${end}`, { replace: true }) } } catch {} }}
           markers={workMarkers}
           emphasis={emphasisMarkers}
           tooltips={dayTooltips}
@@ -206,6 +224,8 @@ export default function TechnicianSchedulePage() {
             days.forEach(d => { const w = map[d] || 0; const l = leaveCount[d] || 0; tips[d] = `工單 ${w}、請假 ${l}` })
             setWorkMarkers(map); setEmphasisMarkers(emph); setDayTooltips(tips)
           }}
+          onDayHover={(ds) => setHoverDate(ds)}
+          onDayLeave={() => setHoverDate('')}
         />
       ) : (
         <div className="rounded-2xl bg-white p-3 shadow-card">
@@ -224,13 +244,54 @@ export default function TechnicianSchedulePage() {
                 const ds = d.toISOString().slice(0,10)
                 const isSel = ds === date
                 return (
-                  <button key={i} onClick={() => (window.location.search = `?orderId=${orderId}&date=${ds}&start=${start}&end=${end}`)} className={`h-8 rounded-md ${isSel? 'bg-brand-500 text-white' : 'bg-gray-100 text-gray-700'}`}>{String(d.getUTCDate())}</button>
+                  <button key={i} onClick={async () => { try { if (orderId && repos) { await repos.orderRepo.update(orderId, { preferredDate: ds }); navigate(`/orders/${orderId}`) } else { navigate(`/schedule?date=${ds}&start=${start}&end=${end}`, { replace: true }) } } catch {} }} className={`h-8 rounded-md ${isSel? 'bg-brand-500 text-white' : 'bg-gray-100 text-gray-700'}`}>{String(d.getUTCDate())}</button>
                 )
               })
             })()}
           </div>
         </div>
       ))}
+
+      {hoverDate && (
+        <div className="rounded-2xl bg-white p-4 shadow-card">
+          <div className="text-sm font-semibold">當日概覽 {hoverDate}</div>
+          <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
+            <div>
+              <div className="mb-1 text-xs text-gray-500">已排班</div>
+              <div className="space-y-1 text-xs">
+                {works.filter(w=>w.date===hoverDate).map((w,i)=>{
+                  const t = emailToTech[(w.technicianEmail||'').toLowerCase()]
+                  const oi = hoverOrders[w.orderId]
+                  const qty = oi? (oi.serviceItems||[]).reduce((s:any,it:any)=>s+(it.quantity||0),0) : '-'
+                  return (
+                    <div key={i} className="flex items-center justify-between rounded border px-2 py-1">
+                      <div className="truncate">#{w.orderId} · {w.startTime}~{w.endTime}</div>
+                      <div className="text-gray-500">{t? (t.region==='all'?'全區':t.region):''} · 數量 {qty}</div>
+                    </div>
+                  )
+                })}
+                {works.filter(w=>w.date===hoverDate).length===0 && <div className="text-gray-500">無</div>}
+              </div>
+            </div>
+            <div>
+              <div className="mb-1 text-xs text-gray-500">可排單技師（點擊勾選，稍後按確認指派）</div>
+              <div className="space-y-1 text-xs">
+                {techs.filter(t=>{
+                  const emailLc = (t.email||'').toLowerCase()
+                  const hasLeave = leaves.some(l => (l.technicianEmail || '').toLowerCase() === emailLc && l.date === hoverDate)
+                  const hasOverlap = works.some(w => ((w.technicianEmail || '').toLowerCase() === emailLc) && w.date === hoverDate && overlaps(w.startTime, w.endTime, start, end))
+                  return !hasLeave && !hasOverlap
+                }).map(t => (
+                  <label key={t.id} className={`flex items-center justify-between rounded border px-2 py-1 ${selected[t.id]?'border-brand-400':''}`}>
+                    <span className="truncate">{t.shortName||t.name}（{t.code}） · {t.region==='all'?'全區':t.region}</span>
+                    <input type="checkbox" checked={!!selected[t.id]} onChange={()=>toggleSelect(t.id)} />
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 當日工作清單（可點擊跳轉訂單） */}
       <div className="rounded-2xl bg-white p-4 shadow-card">
@@ -387,74 +448,6 @@ export default function TechnicianSchedulePage() {
         )}
       </div>
       )}
-
-      <div className="rounded-2xl bg-white p-4 shadow-card">
-        <div className="flex items-center justify-between">
-          <div className="text-lg font-semibold">技師休假</div>
-          <button onClick={() => setTechLeaveOpen(o => !o)} className="rounded-lg bg-gray-100 px-3 py-1 text-sm">{techLeaveOpen ? '收起' : '展開'}</button>
-        </div>
-        {techLeaveOpen && (
-          <div className="mt-3 space-y-3">
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-              <div>
-                <label className="mb-1 block text-sm text-gray-600">選擇技師</label>
-                <select className="w-full rounded-lg border px-2 py-1" value={techLeaveEmail} onChange={(e)=>setTechLeaveEmail(e.target.value)}>
-                  <option value="">請選擇</option>
-                  {techs.map(t => <option key={t.id} value={t.email}>{t.name}（{t.code}）</option>)}
-                </select>
-              </div>
-              <div className="md:col-span-2">
-                <Calendar value={techLeaveDate} onChange={setTechLeaveDate} header="選擇日期" />
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-3 text-sm">
-              <div>
-                <label className="mr-2 text-gray-600">時段</label>
-                <select className="rounded-lg border px-2 py-1" value={techLeaveSlot} onChange={(e)=>setTechLeaveSlot(e.target.value as any)}>
-                  <option value="am">上午</option>
-                  <option value="pm">下午</option>
-                  <option value="full">全天</option>
-                </select>
-              </div>
-              <div>
-                <label className="mr-2 text-gray-600">假別</label>
-                <select className="rounded-lg border px-2 py-1" value={techLeaveType} onChange={(e)=>setTechLeaveType(e.target.value as any)}>
-                  <option value="排休">排休</option>
-                  <option value="特休">特休</option>
-                  <option value="事假">事假</option>
-                  <option value="婚假">婚假</option>
-                  <option value="病假">病假</option>
-                  <option value="喪假">喪假</option>
-                </select>
-              </div>
-              <button onClick={async()=>{
-                if(!techLeaveEmail){ alert('請先選擇技師'); return }
-                const color = (type: string) => type==='排休'||type==='特休'? '#FEF3C7' : type==='事假'? '#DBEAFE' : type==='婚假'? '#FCE7F3' : type==='病假'? '#E5E7EB' : '#9CA3AF'
-                const payload: any = { technicianEmail: techLeaveEmail, date: techLeaveDate, fullDay: techLeaveSlot==='full', reason: techLeaveType, color: color(techLeaveType) }
-                if(techLeaveSlot==='am'){ payload.fullDay=false; payload.startTime='09:00'; payload.endTime='12:00' }
-                if(techLeaveSlot==='pm'){ payload.fullDay=false; payload.startTime='13:00'; payload.endTime='18:00' }
-                try {
-                  if(!repos) return
-                  await repos.scheduleRepo.saveTechnicianLeave(payload)
-                  const yymm = techLeaveDate.slice(0,7)
-                  await Promise.all([
-                    repos.scheduleRepo.listTechnicianLeaves({ start: `${yymm}-01`, end: `${yymm}-31` }).then(setLeaves),
-                    repos.scheduleRepo.listWork({ start: `${yymm}-01`, end: `${yymm}-31` }).then((ws:any[])=>{
-                      setWorks(ws)
-                      const map: Record<string, number> = {}; const overlapCount: Record<string, number> = {}
-                      for (const w of ws) { map[w.date]=(map[w.date]||0)+1; if (overlaps(w.startTime, w.endTime, start, end)) overlapCount[w.date]=(overlapCount[w.date]||0)+1 }
-                      const emph: Record<string, 'warn'|'danger'> = {}
-                      Object.keys(overlapCount).forEach(d=>{ const c=overlapCount[d]; emph[d]= c>=5?'danger':'warn' })
-                      setWorkMarkers(map); setEmphasisMarkers(emph)
-                    })
-                  ])
-                  alert('已新增休假')
-                } catch(e:any){ alert(e?.message||'新增失敗') }
-              }} className="rounded-xl bg-brand-500 px-4 py-2 text-white">新增</button>
-            </div>
-          </div>
-        )}
-      </div>
 
       <div className="text-lg font-semibold">技師排班（休假）</div>
       <div className="rounded-2xl bg-white p-3 text-xs text-gray-600 shadow-card">

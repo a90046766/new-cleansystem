@@ -104,3 +104,5 @@ Thumbs.db
 .webcapc/
 hell -NoProfile -ExecutionPolicy Bypass -Command npm run build
 hell -NoProfile -ExecutionPolicy Bypass -Command npm run build
+.webcapc/
+hell -NoProfile -ExecutionPolicy Bypass -Command npm run build
